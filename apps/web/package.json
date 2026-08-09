@@ -1,0 +1,23 @@
+{
+  "name": "@faultscope/web",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "next": "16.2.11",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.2.11",
+    "typescript": "5.9.3",
+    "vitest": "4.1.0"
+  }
+}

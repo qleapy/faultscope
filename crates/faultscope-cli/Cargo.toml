@@ -1,0 +1,12 @@
+[package]
+name = "faultscope-cli"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "faultscope"
+path = "src/main.rs"
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+/target
+**/node_modules
+/.next
+**/.next
+*.tsbuildinfo
+coverage
+.DS_Store

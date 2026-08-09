@@ -1,0 +1,1 @@
+//! Provider registration for `FaultScope`.
