@@ -6,3 +6,13 @@ version.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+addr2line.workspace = true
+faultscope-core = { path = "../faultscope-core" }
+faultscope-model = { path = "../faultscope-model" }
+object.workspace = true
+
+[dev-dependencies]
+gimli = { workspace = true, features = ["write"] }
+object = { workspace = true, features = ["write"] }
