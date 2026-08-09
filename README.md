@@ -4,7 +4,7 @@ Architecture- and OS-agnostic post-mortem debugging platform.
 
 > See what happened before the crash.
 
-This repository is in Phase 0: the Rust workspace and web application are bootstrapped, but analysis functionality is intentionally not implemented yet.
+This repository has completed Phase 1: the Rust workspace includes an architecture-neutral canonical data model, but analysis functionality is intentionally not implemented yet.
 
 ## Requirements
 

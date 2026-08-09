@@ -1,0 +1,20 @@
+{
+  "format": "faultscope-crash-v1",
+  "target": {
+    "architecture": "arm.cortex-m",
+    "execution_environment": "baremetal",
+    "endian": "little",
+    "pointer_width": 32,
+    "abi": "aapcs"
+  },
+  "timestamp": "2026-08-10T00:00:00Z",
+  "build_id": "example-build-001",
+  "registers": [
+    { "id": "arm.lr", "value": "0x08001235" },
+    { "id": "arm.pc", "value": "0x08004567" }
+  ],
+  "facts": {
+    "arch.arm.cortex_m.cfsr": "0x00008200",
+    "arch.arm.cortex_m.bfar": "0x00000004"
+  }
+}
