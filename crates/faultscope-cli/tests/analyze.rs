@@ -12,6 +12,7 @@ fn analyze_command_emits_integrated_json() {
     fs::create_dir_all(&directory).unwrap();
     let elf_path = directory.join("firmware.elf");
     let crash_path = directory.join("crash.json");
+    let log_path = directory.join("runtime.log");
     fs::write(&elf_path, elf()).unwrap();
     fs::write(
         &crash_path,
@@ -28,12 +29,19 @@ fn analyze_command_emits_integrated_json() {
         }"#,
     )
     .unwrap();
+    fs::write(
+        &log_path,
+        "0.000100 [INFO] system boot\nmalformed\n2.205000 [FAULT] hardfault\n",
+    )
+    .unwrap();
 
     let output = Command::new(env!("CARGO_BIN_EXE_faultscope"))
         .args(["analyze", "--elf"])
         .arg(&elf_path)
         .arg("--crash")
         .arg(&crash_path)
+        .arg("--log")
+        .arg(&log_path)
         .output()
         .unwrap();
     assert!(
@@ -44,6 +52,10 @@ fn analyze_command_emits_integrated_json() {
     let result: AnalysisResult = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(result.frames[0].symbol.as_deref(), Some("crash_here"));
     assert_eq!(result.fault.fault_classes[0].0, "bus_fault");
+    assert_eq!(result.events.len(), 2);
+    assert_eq!(result.events[1].timestamp_ns, 2_205_000_000);
+    assert_eq!(result.log_diagnostics.parsed_lines, 2);
+    assert_eq!(result.log_diagnostics.ignored_lines, 1);
 
     fs::remove_dir_all(directory).unwrap();
 }

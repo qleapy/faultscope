@@ -211,6 +211,31 @@ pub struct Event {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogSeverity {
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fault,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LogLineDiagnostic {
+    pub line: u64,
+    pub reason: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LogDiagnostics {
+    pub parsed_lines: u64,
+    pub ignored_lines: u64,
+    #[serde(default)]
+    pub skipped: Vec<LogLineDiagnostic>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Info,
@@ -320,6 +345,10 @@ pub struct AnalysisResult {
     pub snapshot: TargetSnapshot,
     pub frames: Vec<StackFrame>,
     pub fault: FaultDecode,
+    #[serde(default)]
+    pub events: Vec<Event>,
+    #[serde(default)]
+    pub log_diagnostics: LogDiagnostics,
     #[serde(default)]
     pub findings: Vec<Finding>,
 }

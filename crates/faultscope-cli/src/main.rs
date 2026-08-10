@@ -64,7 +64,11 @@ fn symbolicate(args: &[OsString]) -> Result<(), String> {
 }
 
 fn analyze(args: &[OsString]) -> Result<(), String> {
-    if args.len() != 5 || args[1] != "--elf" || args[3] != "--crash" {
+    if !matches!(args.len(), 5 | 7)
+        || args[1] != "--elf"
+        || args[3] != "--crash"
+        || (args.len() == 7 && args[5] != "--log")
+    {
         return Err(usage());
     }
     let elf_path = PathBuf::from(&args[2]);
@@ -74,7 +78,14 @@ fn analyze(args: &[OsString]) -> Result<(), String> {
         fs::read(&crash_path).map_err(|error| format!("{}: {error}", crash_path.display()))?;
     let crash = serde_json::from_slice::<CrashInfo>(&crash_bytes)
         .map_err(|error| format!("{}: invalid crash JSON: {error}", crash_path.display()))?;
-    let result = analyze_elf(crash, elf).map_err(|error| error.to_string())?;
+    let runtime_log = args
+        .get(6)
+        .map(|path| {
+            let path = PathBuf::from(path);
+            fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))
+        })
+        .transpose()?;
+    let result = analyze_elf(crash, elf, runtime_log).map_err(|error| error.to_string())?;
     println!(
         "{}",
         serde_json::to_string_pretty(&result).map_err(|error| error.to_string())?
@@ -83,7 +94,7 @@ fn analyze(args: &[OsString]) -> Result<(), String> {
 }
 
 fn usage() -> String {
-    "usage:\n  faultscope symbolicate --elf <firmware.elf> <address>\n  faultscope analyze --elf <firmware.elf> --crash <crash.json>".to_owned()
+    "usage:\n  faultscope symbolicate --elf <firmware.elf> <address>\n  faultscope analyze --elf <firmware.elf> --crash <crash.json> [--log <runtime.log>]".to_owned()
 }
 
 #[cfg(test)]

@@ -1,0 +1,5 @@
+0.000100 [INFO] system boot
+0.101200 [INFO] sensor task start
+2.203100 [WARN] sensor timeout
+2.204300 [ERROR] invalid sample
+2.205000 [FAULT] hardfault

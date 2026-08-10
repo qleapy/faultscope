@@ -9,3 +9,4 @@ workspace = true
 
 [dependencies]
 faultscope-model = { path = "../faultscope-model" }
+serde_json.workspace = true

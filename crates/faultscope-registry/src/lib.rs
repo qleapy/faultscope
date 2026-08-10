@@ -42,7 +42,11 @@ impl std::error::Error for RegistryError {}
 /// # Errors
 ///
 /// Returns an error for unsupported targets, invalid ELF data, or failed analysis.
-pub fn analyze_elf(crash: CrashInfo, elf: Vec<u8>) -> Result<AnalysisResult, RegistryError> {
+pub fn analyze_elf(
+    crash: CrashInfo,
+    elf: Vec<u8>,
+    runtime_log: Option<Vec<u8>>,
+) -> Result<AnalysisResult, RegistryError> {
     if crash.format != "faultscope-crash-v1" {
         return Err(RegistryError::UnsupportedCrashFormat(crash.format));
     }
@@ -59,7 +63,7 @@ pub fn analyze_elf(crash: CrashInfo, elf: Vec<u8>) -> Result<AnalysisResult, Reg
     let symbols = ElfSymbolProvider::parse(elf)
         .map_err(|error| RegistryError::InvalidArtifact(error.to_string()))?;
     Analyzer::new(CortexM, BareMetal, symbols)
-        .analyze(AnalysisRequest { crash })
+        .analyze(AnalysisRequest { crash, runtime_log })
         .map_err(|error| RegistryError::Analysis(error.to_string()))
 }
 
@@ -112,7 +116,7 @@ mod tests {
 
     #[test]
     fn integrates_crash_symbol_and_fault_providers() {
-        let result = analyze_elf(crash(), elf()).unwrap();
+        let result = analyze_elf(crash(), elf(), None).unwrap();
         assert_eq!(result.frames.len(), 1);
         assert_eq!(result.frames[0].symbol.as_deref(), Some("crash_here"));
         assert_eq!(result.frames[0].address.value, 0);
@@ -127,7 +131,7 @@ mod tests {
         let mut crash = crash();
         crash.target.architecture.0 = "riscv32".to_owned();
         assert_eq!(
-            analyze_elf(crash, b"invalid".to_vec()),
+            analyze_elf(crash, b"invalid".to_vec(), None),
             Err(RegistryError::UnsupportedArchitecture("riscv32".to_owned()))
         );
     }
@@ -137,7 +141,7 @@ mod tests {
         let mut crash = crash();
         crash.format = "future-crash-v2".to_owned();
         assert_eq!(
-            analyze_elf(crash, elf()),
+            analyze_elf(crash, elf(), None),
             Err(RegistryError::UnsupportedCrashFormat(
                 "future-crash-v2".to_owned()
             ))

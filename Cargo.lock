@@ -97,6 +97,7 @@ name = "faultscope-core"
 version = "0.1.0"
 dependencies = [
  "faultscope-model",
+ "serde_json",
 ]
 
 [[package]]
