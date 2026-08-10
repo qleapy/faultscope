@@ -38,36 +38,46 @@ export type Analysis = {
     description: string;
     evidence: Array<{ id: string; description: string; fact?: string }>;
   }>;
-  artifact: Record<string, unknown>;
+  artifact: {
+    name: string;
+    kind: string;
+    size_bytes: number | null;
+    build_id: string | null;
+    symbols: string;
+    dwarf: string;
+  };
   sourceContext: {
     file: string;
     focusLine: number;
     lines: Array<{ number: number; text: string }>;
-  };
+  } | null;
 };
 
 export function decodeAnalysis(value: unknown): Analysis {
   const root = record(value, "analysis");
-  const incident = record(root.incident, "incident");
+  const incident = optionalRecord(root.incident);
   const snapshot = record(root.snapshot, "snapshot");
   const fault = record(root.fault, "fault");
   const diagnostics = record(root.log_diagnostics, "log_diagnostics");
-  const source = record(root.source_context, "source_context");
+  const source = optionalRecord(root.source_context);
+  const build = record(root.build, "build") as Analysis["build"];
+  const frames = list(root.frames, "frames") as Analysis["frames"];
+  const artifact = optionalRecord(root.artifact);
 
   return {
     incident: {
-      id: text(incident.id, "incident.id"),
-      status: text(incident.status, "incident.status"),
-      label: text(incident.label, "incident.label"),
+      id: incident ? text(incident.id, "incident.id") : "LOCAL",
+      status: incident ? text(incident.status, "incident.status") : "crash",
+      label: incident ? text(incident.label, "incident.label") : "Local crash analysis",
     },
     target: record(root.target, "target"),
-    timestamp: text(root.timestamp, "timestamp"),
-    build: record(root.build, "build") as Analysis["build"],
+    timestamp: root.timestamp == null ? "Unavailable" : text(root.timestamp, "timestamp"),
+    build,
     snapshot: {
       registers: list(snapshot.registers, "registers") as Analysis["snapshot"]["registers"],
       facts: record(snapshot.facts, "facts"),
     },
-    frames: list(root.frames, "frames") as Analysis["frames"],
+    frames,
     fault: {
       fault_classes: list(fault.fault_classes, "fault classes").map((item) =>
         text(item, "fault class"),
@@ -90,12 +100,23 @@ export function decodeAnalysis(value: unknown): Analysis {
       ignoredLines: integer(diagnostics.ignored_lines, "ignored_lines"),
     },
     findings: list(root.findings, "findings") as Analysis["findings"],
-    artifact: record(root.artifact, "artifact"),
-    sourceContext: {
-      file: text(source.file, "source file"),
-      focusLine: integer(source.focus_line, "focus line"),
-      lines: list(source.lines, "source lines") as Analysis["sourceContext"]["lines"],
-    },
+    artifact: artifact
+      ? (artifact as Analysis["artifact"])
+      : {
+          name: "firmware.elf",
+          kind: "ELF / DWARF",
+          size_bytes: null,
+          build_id: build.id,
+          symbols: frames.some((frame) => frame.symbol) ? "available" : "unavailable",
+          dwarf: frames.some((frame) => frame.source) ? "available" : "unavailable",
+        },
+    sourceContext: source
+      ? {
+          file: text(source.file, "source file"),
+          focusLine: integer(source.focus_line, "focus line"),
+          lines: list(source.lines, "source lines") as NonNullable<Analysis["sourceContext"]>["lines"],
+        }
+      : null,
   };
 }
 
@@ -160,6 +181,10 @@ function record(value: unknown, name: string): Record<string, unknown> {
     throw new Error(`${name} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function optionalRecord(value: unknown): Record<string, unknown> | null {
+  return value == null ? null : record(value, "optional value");
 }
 
 function list(value: unknown, name: string): unknown[] {

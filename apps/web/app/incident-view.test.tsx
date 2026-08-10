@@ -17,6 +17,10 @@ describe("incident view", () => {
       "Frames",
       "Unavailable",
       "Artifact",
+      "Analyze artifacts",
+      "Firmware ELF",
+      "Crash JSON",
+      "Run analysis",
     ]) {
       expect(html).toContain(text);
     }

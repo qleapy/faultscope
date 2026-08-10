@@ -11,6 +11,7 @@ workspace = true
 addr2line.workspace = true
 faultscope-core = { path = "../faultscope-core" }
 faultscope-model = { path = "../faultscope-model" }
+gimli = { workspace = true, features = ["endian-reader"] }
 object.workspace = true
 
 [dev-dependencies]

@@ -23,6 +23,18 @@ describe("analysis fixture", () => {
     expect(() => decodeAnalysis(invalid)).toThrow("timestamp_ns");
   });
 
+  it("decodes the canonical Rust result without fixture-only display metadata", () => {
+    const canonical = structuredClone(fixture) as Record<string, unknown>;
+    delete canonical.incident;
+    delete canonical.artifact;
+    delete canonical.source_context;
+    canonical.timestamp = null;
+    const analysis = decodeAnalysis(canonical);
+    expect(analysis.incident.label).toBe("Local crash analysis");
+    expect(analysis.sourceContext).toBeNull();
+    expect(analysis.artifact.symbols).toBe("available");
+  });
+
   it("converts time to pixels and zooms without Number nanosecond storage", () => {
     const events = decodeAnalysis(fixture).events;
     const viewport = initialViewport(events);

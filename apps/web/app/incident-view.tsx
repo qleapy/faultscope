@@ -18,13 +18,20 @@ import {
 const fixtureAnalysis = decodeAnalysis(fixture);
 
 export function IncidentView() {
-  const analysis = fixtureAnalysis;
+  const [analysis, setAnalysis] = useState(fixtureAnalysis);
   const [selectedEvent, setSelectedEvent] = useState(Math.max(0, analysis.events.length - 1));
   const [selectedFrame, setSelectedFrame] = useState(0);
 
   return (
     <main className="app-shell">
       <IncidentHeader analysis={analysis} />
+      <AnalysisForm
+        onComplete={(next) => {
+          setAnalysis(next);
+          setSelectedEvent(Math.max(0, next.events.length - 1));
+          setSelectedFrame(0);
+        }}
+      />
       <Timeline
         events={analysis.events}
         selected={selectedEvent}
@@ -46,6 +53,61 @@ export function IncidentView() {
         Deterministic analysis only · Symbols, addresses, and fault facts come from parsed artifacts.
       </footer>
     </main>
+  );
+}
+
+function AnalysisForm({ onComplete }: { onComplete: (analysis: Analysis) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <section className="panel analysis-form-panel" aria-labelledby="analyze-title">
+      <div>
+        <p className="eyebrow">Deterministic analysis</p>
+        <h2 id="analyze-title">Analyze artifacts</h2>
+        <p className="form-help">Uploaded firmware is parsed as data and never executed.</p>
+      </div>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setLoading(true);
+          setError(null);
+          try {
+            const response = await fetch("/api/analyze", {
+              method: "POST",
+              body: new FormData(event.currentTarget),
+            });
+            const result = (await response.json()) as unknown;
+            if (!response.ok) {
+              const message = typeof result === "object" && result !== null && "error" in result
+                ? String(result.error)
+                : "Analysis failed";
+              throw new Error(message);
+            }
+            onComplete(decodeAnalysis(result));
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : "Analysis failed");
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        <label>
+          <span>Firmware ELF</span>
+          <input name="elf" type="file" required accept=".elf,application/octet-stream" />
+        </label>
+        <label>
+          <span>Crash JSON</span>
+          <input name="crash" type="file" required accept=".json,application/json" />
+        </label>
+        <label>
+          <span>Runtime log <small>optional</small></span>
+          <input name="log" type="file" accept=".log,.txt,text/plain" />
+        </label>
+        <button type="submit" disabled={loading}>{loading ? "Analyzing…" : "Run analysis"}</button>
+      </form>
+      {error ? <p className="form-error" role="alert">{error} Check the files and try again.</p> : null}
+    </section>
   );
 }
 
@@ -266,15 +328,15 @@ function StackFramePanel({
 
 function SourceLocationPanel({ analysis, selectedFrame }: { analysis: Analysis; selectedFrame: number }) {
   const frame = analysis.frames[selectedFrame];
-  const matchesFixture = frame?.source?.file === analysis.sourceContext.file;
+  const matchesFixture = analysis.sourceContext && frame?.source?.file === analysis.sourceContext.file;
   return (
     <section className="panel source-panel" aria-labelledby="source-title">
       <PanelTitle eyebrow="Source location" title={frame?.source?.file ?? "Unavailable"} id="source-title" />
-      {matchesFixture ? (
+      {matchesFixture && analysis.sourceContext ? (
         <pre className="source-code" aria-label={`Source around line ${analysis.sourceContext.focusLine}`}>
           {analysis.sourceContext.lines.map((line) => (
-            <span key={line.number} className={line.number === analysis.sourceContext.focusLine ? "focus-line" : ""}>
-              <b>{line.number}</b><code>{line.text}</code>{line.number === analysis.sourceContext.focusLine ? <em>PC</em> : null}
+            <span key={line.number} className={line.number === analysis.sourceContext?.focusLine ? "focus-line" : ""}>
+              <b>{line.number}</b><code>{line.text}</code>{line.number === analysis.sourceContext?.focusLine ? <em>PC</em> : null}
             </span>
           ))}
         </pre>
@@ -289,7 +351,7 @@ function ArtifactPanel({ analysis }: { analysis: Analysis }) {
   const fields = [
     ["File", analysis.artifact.name],
     ["Format", analysis.artifact.kind],
-    ["Size", `${Math.round(Number(analysis.artifact.size_bytes) / 1024)} KiB`],
+    ["Size", analysis.artifact.size_bytes == null ? null : `${Math.round(analysis.artifact.size_bytes / 1024)} KiB`],
     ["Build ID", analysis.artifact.build_id],
     ["Build time", analysis.build.timestamp],
     ["Symbols", analysis.artifact.symbols],
