@@ -22,6 +22,7 @@ const incidentId = "123e4567-e89b-42d3-a456-426614174000";
 describe("POST /api/incidents/:id/analyze", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createQueuedAnalysis.mockResolvedValue(undefined);
     mocks.start.mockResolvedValue({ runId: "wrun_123" });
     mocks.failAnalysis.mockResolvedValue(undefined);
   });
@@ -84,10 +85,18 @@ describe("POST /api/incidents/:id/analyze", () => {
   });
 
   it("rejects an incident that cannot transition to queued", async () => {
-    mocks.createQueuedAnalysis.mockRejectedValue(new Error("not ready"));
+    mocks.createQueuedAnalysis.mockRejectedValue(new Error("Incident is not ready for analysis"));
     const response = await POST(request(), { params: Promise.resolve({ id: incidentId }) });
     expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Analysis could not be queued", retryable: true });
     expect(mocks.start).not.toHaveBeenCalled();
+  });
+
+  it("does not retry a workflow start failure", async () => {
+    mocks.start.mockRejectedValue(new Error("workflow unavailable"));
+    const response = await POST(request(), { params: Promise.resolve({ id: incidentId }) });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Analysis could not be queued", retryable: false });
   });
 });
 

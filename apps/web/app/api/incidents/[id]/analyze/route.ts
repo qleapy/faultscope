@@ -22,7 +22,10 @@ export async function POST(request: Request, context: Context) {
     return Response.json({ analysisId, workflowRunId: run.runId, status: "QUEUED" }, { status: 202 });
   } catch (error) {
     await failAnalysis(analysisId, error instanceof Error ? error.message : "Analysis could not be queued").catch(() => {});
-    return Response.json({ error: "Analysis could not be queued" }, { status: 409 });
+    return Response.json({
+      error: "Analysis could not be queued",
+      retryable: error instanceof Error && error.message === "Incident is not ready for analysis",
+    }, { status: 409 });
   }
 }
 

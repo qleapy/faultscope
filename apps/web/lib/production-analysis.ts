@@ -12,6 +12,27 @@ export type AnalysisStep = {
   state: "complete" | "current" | "pending" | "failed";
 };
 
+export async function queueAnalysis(
+  incidentId: string,
+  options: { signal?: AbortSignal; intervalMs?: number; attempts?: number; fetcher?: typeof fetch } = {},
+): Promise<string> {
+  const fetcher = options.fetcher ?? fetch;
+  const attempts = options.attempts ?? 10;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const response = await fetcher(`/api/incidents/${incidentId}/analyze`, {
+      method: "POST",
+      signal: options.signal,
+    });
+    const value = await response.json() as { analysisId?: string; error?: string; retryable?: boolean };
+    if (response.ok && value.analysisId) return value.analysisId;
+    if (!value.retryable || attempt === attempts - 1) {
+      throw new Error(value.error ?? "Analysis could not be queued");
+    }
+    await delay(options.intervalMs ?? 500, options.signal);
+  }
+  throw new Error("Analysis could not be queued");
+}
+
 export function analysisSteps(analysis: ProductionAnalysis): AnalysisStep[] {
   const failedQueue = analysis.status === "FAILED" && analysis.stage === "Queueing analysis";
   return [

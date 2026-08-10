@@ -25,6 +25,7 @@ import {
 import {
   analysisSteps,
   pollAnalysis,
+  queueAnalysis,
   type ProductionAnalysis,
 } from "../lib/production-analysis";
 
@@ -90,22 +91,15 @@ function AnalysisForm({
     polling.current?.abort();
     const controller = new AbortController();
     polling.current = controller;
-    const response = await fetch(`/api/incidents/${incidentId}/analyze`, {
-      method: "POST",
-      signal: controller.signal,
-    });
-    const queued = (await response.json()) as { analysisId?: string; error?: string };
-    if (!response.ok || !queued.analysisId) {
-      throw new Error(queued.error ?? "Analysis could not be queued");
-    }
+    const analysisId = await queueAnalysis(incidentId, { signal: controller.signal });
     setProductionAnalysis({
       incidentId,
-      analysisId: queued.analysisId,
+      analysisId,
       status: "QUEUED",
       stage: "Queueing analysis",
     });
     const final = await pollAnalysis(
-      `/api/incidents/${incidentId}/analyze?analysisId=${queued.analysisId}`,
+      `/api/incidents/${incidentId}/analyze?analysisId=${analysisId}`,
       setProductionAnalysis,
       { signal: controller.signal },
     );
