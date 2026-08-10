@@ -418,7 +418,7 @@ function FindingsPanel({ analysis }: { analysis: Analysis }) {
                   <span aria-hidden="true" />
                   <div>
                     {evidence.description}
-                    <code>{evidence.fact ?? "No fact reference"}</code>
+                    <code>{evidenceReference(evidence)}</code>
                   </div>
                 </li>
               ))}
@@ -428,6 +428,16 @@ function FindingsPanel({ analysis }: { analysis: Analysis }) {
       )}
     </section>
   );
+}
+
+export function evidenceReference(
+  evidence: Analysis["findings"][number]["evidence"][number],
+): string {
+  if (evidence.fact) return evidence.fact;
+  if (evidence.event) return evidence.event;
+  if (evidence.register) return evidence.register;
+  if (evidence.frame !== undefined) return `Frame #${evidence.frame}`;
+  return "Recorded evidence";
 }
 
 function RegistersPanel({ analysis }: { analysis: Analysis }) {

@@ -36,7 +36,14 @@ export type Analysis = {
     confidence: number;
     title: string;
     description: string;
-    evidence: Array<{ id: string; description: string; fact?: string }>;
+    evidence: Array<{
+      id: string;
+      description: string;
+      fact?: string;
+      event?: string;
+      register?: string;
+      frame?: number;
+    }>;
   }>;
   artifact: {
     name: string;

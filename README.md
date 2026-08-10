@@ -4,7 +4,7 @@ Architecture- and OS-agnostic post-mortem debugging platform.
 
 > See what happened before the crash.
 
-This repository has completed Phase 9: private artifacts are processed by a durable Vercel Workflow that runs the trusted Rust CLI in an isolated Vercel Sandbox.
+This repository has completed Phase 11: private artifacts are processed by a durable Vercel Workflow, and the trusted Rust CLI produces independently tested, evidence-backed deterministic findings in an isolated Vercel Sandbox.
 
 ```sh
 cargo run -p faultscope-cli -- symbolicate --elf firmware.elf 0x08004567

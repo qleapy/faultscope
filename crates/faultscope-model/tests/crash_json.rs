@@ -2,7 +2,7 @@ use faultscope_model::{
     ArchitectureId, BuildInfo, CrashInfo, Event, EventId, EventKind, EventSource, Evidence,
     EvidenceId, EvidenceSet, ExecutionEntity, ExecutionEntityId, ExecutionEntityKind,
     ExecutionEnvironmentId, FactId, Finding, FindingId, FindingKind, Incident, IncidentId,
-    Severity, TargetDescriptor,
+    RegisterId, Severity, TargetDescriptor,
 };
 use serde_json::json;
 
@@ -116,6 +116,8 @@ fn incident_round_trips_generic_entities_events_and_evidence() {
                 description: "Observed event and fault fact".into(),
                 fact: Some(FactId("arch.example.cause".into())),
                 event: Some(event_id),
+                register: Some(RegisterId("example.pc".into())),
+                frame: Some(0),
             }),
         }],
     };
@@ -125,6 +127,21 @@ fn incident_round_trips_generic_entities_events_and_evidence() {
 
     assert_eq!(decoded, incident);
     assert_eq!(decoded.findings[0].evidence.as_slice().len(), 1);
+}
+
+#[test]
+fn evidence_set_can_be_extended_without_becoming_empty() {
+    let evidence = |id: &str| Evidence {
+        id: EvidenceId(id.into()),
+        description: "Observed evidence".into(),
+        fact: None,
+        event: None,
+        register: None,
+        frame: None,
+    };
+    let mut set = EvidenceSet::new(evidence("evidence.1"));
+    set.push(evidence("evidence.2"));
+    assert_eq!(set.as_slice().len(), 2);
 }
 
 #[test]

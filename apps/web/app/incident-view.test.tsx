@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { AnalysisProgress, IncidentView } from "./incident-view";
+import { AnalysisProgress, IncidentView, evidenceReference } from "./incident-view";
 
 describe("incident view", () => {
   it("renders facts, interpretation, confidence, evidence, frames, and unavailable state", () => {
@@ -49,5 +49,10 @@ describe("incident view", () => {
     expect(html).toContain("Verify the ELF and crash JSON.");
     expect(html).toContain("Retry analysis");
     expect(html).not.toContain("stack");
+  });
+
+  it("labels rule evidence by its actual reference type", () => {
+    expect(evidenceReference({ id: "frame", description: "PC", frame: 0 })).toBe("Frame #0");
+    expect(evidenceReference({ id: "register", description: "SP", register: "arm.sp" })).toBe("arm.sp");
   });
 });

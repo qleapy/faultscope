@@ -124,6 +124,24 @@ mod tests {
         assert!(result.fault.facts.iter().any(|fact| {
             fact.id.0 == "arch.arm.cortex_m.bfar.address" && fact.value == json!("0x00000004")
         }));
+        assert_eq!(
+            result
+                .findings
+                .iter()
+                .map(|finding| finding.id.0.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "finding.fault_register",
+                "finding.possible_null_address",
+                "finding.pc_resolved",
+            ]
+        );
+        assert!(
+            result
+                .findings
+                .iter()
+                .all(|finding| !finding.evidence.as_slice().is_empty())
+        );
     }
 
     #[test]

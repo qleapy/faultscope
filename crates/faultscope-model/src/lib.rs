@@ -131,6 +131,8 @@ pub struct FaultFact {
     pub id: FactId,
     pub description: String,
     pub value: FactValue,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<TargetAddress>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -253,6 +255,10 @@ pub struct Evidence {
     pub fact: Option<FactId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<EventId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register: Option<RegisterId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -268,6 +274,10 @@ impl EvidenceSet {
     #[must_use]
     pub fn as_slice(&self) -> &[Evidence] {
         &self.0
+    }
+
+    pub fn push(&mut self, evidence: Evidence) {
+        self.0.push(evidence);
     }
 }
 

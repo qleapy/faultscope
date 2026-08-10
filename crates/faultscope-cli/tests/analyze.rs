@@ -56,6 +56,20 @@ fn analyze_command_emits_integrated_json() {
     assert_eq!(result.events[1].timestamp_ns, 2_205_000_000);
     assert_eq!(result.log_diagnostics.parsed_lines, 2);
     assert_eq!(result.log_diagnostics.ignored_lines, 1);
+    assert_eq!(
+        result
+            .findings
+            .iter()
+            .map(|finding| finding.id.0.as_str())
+            .collect::<Vec<_>>(),
+        ["finding.fault_register", "finding.pc_resolved"]
+    );
+    assert!(
+        result
+            .findings
+            .iter()
+            .all(|finding| !finding.evidence.as_slice().is_empty())
+    );
 
     fs::remove_dir_all(directory).unwrap();
 }

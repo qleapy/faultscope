@@ -1,5 +1,12 @@
 //! Architecture- and deployment-independent analysis orchestration.
 
+mod finding;
+
+pub use finding::{
+    AnalysisContext, FaultRegisterRule, IncidentRule, InvalidExecutionAddressRule, NullAddressRule,
+    PcResolutionRule, StackPointerRangeRule, default_incident_rules, run_incident_rules,
+};
+
 use std::fmt;
 
 use faultscope_model::{
@@ -165,15 +172,25 @@ where
                     ..frame
                 })
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<Vec<StackFrame>, _>>()?;
         let fault = self
             .architecture
             .decode_exception(&crash.snapshot)
             .map_err(|error| AnalysisError::Architecture(error.to_string()))?;
-        let findings = self
-            .environment
-            .analyze(&crash.snapshot)
-            .map_err(|error| AnalysisError::Environment(error.to_string()))?;
+        let register_schema = self.architecture.register_schema();
+        let context = AnalysisContext {
+            snapshot: &crash.snapshot,
+            frames: &frames,
+            fault: &fault,
+            register_schema: &register_schema,
+        };
+        let rules = default_incident_rules();
+        let mut findings = run_incident_rules(&context, &rules);
+        findings.extend(
+            self.environment
+                .analyze(&crash.snapshot)
+                .map_err(|error| AnalysisError::Environment(error.to_string()))?,
+        );
         let log = request
             .runtime_log
             .as_deref()

@@ -62,6 +62,20 @@ impl CortexM {
             id: FactId(id.to_owned()),
             description: description.to_owned(),
             value,
+            address: None,
+        }
+    }
+
+    fn fault_address_fact(id: &str, description: &str, value: u32) -> FaultFact {
+        FaultFact {
+            id: FactId(id.to_owned()),
+            description: description.to_owned(),
+            value: FactValue::String(format!("0x{value:08x}")),
+            address: Some(TargetAddress {
+                value: u64::from(value),
+                address_space: AddressSpaceId("memory".to_owned()),
+                role: Some(AddressRole::FaultAddress),
+            }),
         }
     }
 }
@@ -136,19 +150,19 @@ impl ArchitectureProvider for CortexM {
         if cfsr & (1 << 7) != 0
             && let Some(address) = Self::value(snapshot, MMFAR)?
         {
-            decode.facts.push(Self::fact(
+            decode.facts.push(Self::fault_address_fact(
                 "arch.arm.cortex_m.mmfar.address",
                 "Valid MemManage fault address",
-                FactValue::String(format!("0x{address:08x}")),
+                address,
             ));
         }
         if cfsr & (1 << 15) != 0
             && let Some(address) = Self::value(snapshot, BFAR)?
         {
-            decode.facts.push(Self::fact(
+            decode.facts.push(Self::fault_address_fact(
                 "arch.arm.cortex_m.bfar.address",
                 "Valid BusFault address",
-                FactValue::String(format!("0x{address:08x}")),
+                address,
             ));
         }
 
@@ -385,6 +399,9 @@ mod tests {
         assert!(decode.facts.iter().any(|fact| {
             fact.id.0 == "arch.arm.cortex_m.bfar.address"
                 && fact.value == FactValue::String("0x00000004".to_owned())
+                && fact.address.as_ref().is_some_and(|address| {
+                    address.value == 4 && address.role == Some(AddressRole::FaultAddress)
+                })
         }));
     }
 
