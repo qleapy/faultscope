@@ -15,4 +15,8 @@ workspace = true
 faultscope-artifact-elf = { path = "../faultscope-artifact-elf" }
 faultscope-core = { path = "../faultscope-core" }
 faultscope-model = { path = "../faultscope-model" }
+faultscope-registry = { path = "../faultscope-registry" }
 serde_json.workspace = true
+
+[dev-dependencies]
+object = { workspace = true, features = ["write"] }

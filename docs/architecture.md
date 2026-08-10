@@ -10,3 +10,5 @@ The first provider, `faultscope-arch-cortex-m`, currently supplies:
 - deterministic CFSR, HFSR, MMFAR, and BFAR decoding
 
 An exception-return LR is control state rather than a caller address, so it is not emitted as a frame. Finding generation and integrated CLI analysis belong to later phases.
+
+`faultscope-core::Analyzer` combines selected architecture, environment, and symbol providers. Provider selection is isolated in `faultscope-registry`; the CLI and core do not branch on processor-specific fault semantics.

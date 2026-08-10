@@ -2,7 +2,8 @@ use std::{env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
 
 use faultscope_artifact_elf::ElfSymbolProvider;
 use faultscope_core::SymbolProvider;
-use faultscope_model::{AddressRole, AddressSpaceId, TargetAddress};
+use faultscope_model::{AddressRole, AddressSpaceId, CrashInfo, TargetAddress};
+use faultscope_registry::analyze_elf;
 use serde_json::json;
 
 fn main() -> ExitCode {
@@ -17,8 +18,16 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &[OsString]) -> Result<(), String> {
-    if args.len() != 4 || args[0] != "symbolicate" || args[1] != "--elf" {
-        return Err("usage: faultscope symbolicate --elf <firmware.elf> <address>".to_owned());
+    match args.first().and_then(|arg| arg.to_str()) {
+        Some("symbolicate") => symbolicate(args),
+        Some("analyze") => analyze(args),
+        _ => Err(usage()),
+    }
+}
+
+fn symbolicate(args: &[OsString]) -> Result<(), String> {
+    if args.len() != 4 || args[1] != "--elf" {
+        return Err(usage());
     }
 
     let path = PathBuf::from(&args[2]);
@@ -54,6 +63,29 @@ fn run(args: &[OsString]) -> Result<(), String> {
     Ok(())
 }
 
+fn analyze(args: &[OsString]) -> Result<(), String> {
+    if args.len() != 5 || args[1] != "--elf" || args[3] != "--crash" {
+        return Err(usage());
+    }
+    let elf_path = PathBuf::from(&args[2]);
+    let crash_path = PathBuf::from(&args[4]);
+    let elf = fs::read(&elf_path).map_err(|error| format!("{}: {error}", elf_path.display()))?;
+    let crash_bytes =
+        fs::read(&crash_path).map_err(|error| format!("{}: {error}", crash_path.display()))?;
+    let crash = serde_json::from_slice::<CrashInfo>(&crash_bytes)
+        .map_err(|error| format!("{}: invalid crash JSON: {error}", crash_path.display()))?;
+    let result = analyze_elf(crash, elf).map_err(|error| error.to_string())?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&result).map_err(|error| error.to_string())?
+    );
+    Ok(())
+}
+
+fn usage() -> String {
+    "usage:\n  faultscope symbolicate --elf <firmware.elf> <address>\n  faultscope analyze --elf <firmware.elf> --crash <crash.json>".to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,5 +100,10 @@ mod tests {
         ])
         .unwrap_err();
         assert!(error.contains("invalid hexadecimal address"));
+    }
+
+    #[test]
+    fn rejects_incomplete_analyze_command() {
+        assert!(run(&["analyze".into()]).unwrap_err().contains("usage:"));
     }
 }

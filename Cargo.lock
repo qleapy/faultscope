@@ -87,6 +87,8 @@ dependencies = [
  "faultscope-artifact-elf",
  "faultscope-core",
  "faultscope-model",
+ "faultscope-registry",
+ "object",
  "serde_json",
 ]
 
@@ -100,6 +102,10 @@ dependencies = [
 [[package]]
 name = "faultscope-env-baremetal"
 version = "0.1.0"
+dependencies = [
+ "faultscope-core",
+ "faultscope-model",
+]
 
 [[package]]
 name = "faultscope-model"
@@ -112,6 +118,15 @@ dependencies = [
 [[package]]
 name = "faultscope-registry"
 version = "0.1.0"
+dependencies = [
+ "faultscope-arch-cortex-m",
+ "faultscope-artifact-elf",
+ "faultscope-core",
+ "faultscope-env-baremetal",
+ "faultscope-model",
+ "object",
+ "serde_json",
+]
 
 [[package]]
 name = "flate2"

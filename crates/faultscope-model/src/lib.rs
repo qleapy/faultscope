@@ -312,6 +312,19 @@ pub struct SymbolizedAddress {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AnalysisResult {
+    pub target: TargetDescriptor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    pub build: BuildInfo,
+    pub snapshot: TargetSnapshot,
+    pub frames: Vec<StackFrame>,
+    pub fault: FaultDecode,
+    #[serde(default)]
+    pub findings: Vec<Finding>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Incident {
     pub id: IncidentId,
     pub target: TargetDescriptor,
