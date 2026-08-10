@@ -6,3 +6,10 @@ version.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+faultscope-core = { path = "../faultscope-core" }
+faultscope-model = { path = "../faultscope-model" }
+
+[dev-dependencies]
+serde_json.workspace = true

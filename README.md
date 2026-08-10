@@ -4,7 +4,7 @@ Architecture- and OS-agnostic post-mortem debugging platform.
 
 > See what happened before the crash.
 
-This repository has completed Phase 2: the Rust workspace includes an architecture-neutral canonical data model and ELF/DWARF address symbolication.
+This repository has completed Phase 3: the Rust workspace includes the canonical model, ELF/DWARF symbolication, and deterministic Cortex-M fault decoding.
 
 ```sh
 cargo run -p faultscope-cli -- symbolicate --elf firmware.elf 0x08004567

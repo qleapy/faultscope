@@ -63,6 +63,11 @@ checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 [[package]]
 name = "faultscope-arch-cortex-m"
 version = "0.1.0"
+dependencies = [
+ "faultscope-core",
+ "faultscope-model",
+ "serde_json",
+]
 
 [[package]]
 name = "faultscope-artifact-elf"

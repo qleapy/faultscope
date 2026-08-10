@@ -28,6 +28,7 @@ string_id!(FindingId);
 string_id!(FindingKind);
 string_id!(EvidenceId);
 string_id!(FactId);
+string_id!(FaultClass);
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -88,6 +89,28 @@ pub struct RegisterValue {
     pub value: RegisterBits,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegisterRole {
+    InstructionPointer,
+    StackPointer,
+    FramePointer,
+    ReturnAddress,
+    Status,
+    Other,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct RegisterDefinition {
+    pub id: RegisterId,
+    pub label: String,
+    pub role: RegisterRole,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct RegisterSchema(pub Vec<RegisterDefinition>);
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct RegisterSet(pub Vec<RegisterValue>);
@@ -102,6 +125,19 @@ pub struct FactSet(pub BTreeMap<FactId, FactValue>);
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct FaultRegisters(pub FactSet);
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FaultFact {
+    pub id: FactId,
+    pub description: String,
+    pub value: FactValue,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct FaultDecode {
+    pub fault_classes: Vec<FaultClass>,
+    pub facts: Vec<FaultFact>,
+}
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct TargetSnapshot {
