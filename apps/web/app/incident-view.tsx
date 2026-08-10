@@ -22,6 +22,11 @@ import {
   multipartThreshold,
   validateArtifact,
 } from "../lib/artifact-storage";
+import {
+  analysisSteps,
+  pollAnalysis,
+  type ProductionAnalysis,
+} from "../lib/production-analysis";
 
 const fixtureAnalysis = decodeAnalysis(fixture);
 
@@ -76,6 +81,56 @@ function AnalysisForm({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [productionAnalysis, setProductionAnalysis] = useState<ProductionAnalysis | null>(null);
+  const polling = useRef<AbortController | null>(null);
+
+  useEffect(() => () => polling.current?.abort(), []);
+
+  async function startStoredAnalysis(incidentId: string): Promise<boolean> {
+    polling.current?.abort();
+    const controller = new AbortController();
+    polling.current = controller;
+    const response = await fetch(`/api/incidents/${incidentId}/analyze`, {
+      method: "POST",
+      signal: controller.signal,
+    });
+    const queued = (await response.json()) as { analysisId?: string; error?: string };
+    if (!response.ok || !queued.analysisId) {
+      throw new Error(queued.error ?? "Analysis could not be queued");
+    }
+    setProductionAnalysis({
+      incidentId,
+      analysisId: queued.analysisId,
+      status: "QUEUED",
+      stage: "Queueing analysis",
+    });
+    const final = await pollAnalysis(
+      `/api/incidents/${incidentId}/analyze?analysisId=${queued.analysisId}`,
+      setProductionAnalysis,
+      { signal: controller.signal },
+    );
+    if (final.status === "FAILED") return false;
+    if (final.result == null) throw new Error("Analysis completed without a result");
+    onComplete(decodeAnalysis(final.result));
+    setNotice(`Incident ${incidentId} analysis is complete.`);
+    return true;
+  }
+
+  async function retryAnalysis() {
+    if (!productionAnalysis) return;
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await startStoredAnalysis(productionAnalysis.incidentId);
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+        setError(reason instanceof Error ? reason.message : "Analysis failed");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <section className="panel analysis-form-panel" aria-labelledby="analyze-title">
@@ -91,6 +146,7 @@ function AnalysisForm({
           setLoading(true);
           setError(null);
           setNotice(null);
+          setProductionAnalysis(null);
           setProgress(0);
           try {
             if (storageEnabled) {
@@ -124,8 +180,7 @@ function AnalysisForm({
                 completed += item.file.size;
               }
               setProgress(100);
-              setNotice(`Incident ${incident.id} is stored and ready for analysis.`);
-              form.reset();
+              if (await startStoredAnalysis(incident.id)) form.reset();
               return;
             }
             const response = await fetch("/api/analyze", {
@@ -141,11 +196,14 @@ function AnalysisForm({
             }
             onComplete(decodeAnalysis(result));
           } catch (reason) {
-            setError(reason instanceof Error ? reason.message : "Analysis failed");
+            if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+              setError(reason instanceof Error ? reason.message : "Analysis failed");
+            }
           } finally {
             setLoading(false);
           }
         }}
+        aria-busy={loading}
       >
         <label>
           <span>Firmware ELF</span>
@@ -161,13 +219,61 @@ function AnalysisForm({
         </label>
         <button type="submit" disabled={loading}>
           {loading
-            ? storageEnabled ? `Uploading ${progress}%` : "Analyzing…"
-            : storageEnabled ? "Store artifacts" : "Run analysis"}
+            ? storageEnabled
+              ? productionAnalysis
+                ? productionAnalysis.status === "QUEUED" ? "Queued…" : "Analyzing…"
+                : `Uploading ${progress}%`
+              : "Analyzing…"
+            : storageEnabled ? "Analyze artifacts" : "Run analysis"}
         </button>
       </form>
       {error ? <p className="form-error" role="alert">{error} Check the files and try again.</p> : null}
       {notice ? <p className="form-success" role="status">{notice}</p> : null}
+      {productionAnalysis ? (
+        <AnalysisProgress analysis={productionAnalysis} loading={loading} onRetry={retryAnalysis} />
+      ) : null}
     </section>
+  );
+}
+
+export function AnalysisProgress({
+  analysis,
+  loading,
+  onRetry,
+}: {
+  analysis: ProductionAnalysis;
+  loading: boolean;
+  onRetry: () => void;
+}) {
+  const failed = analysis.status === "FAILED";
+  return (
+    <div className="analysis-progress" aria-live="polite" aria-atomic="true">
+      <div className="progress-heading">
+        <div>
+          <p className="eyebrow">Production workflow</p>
+          <h3>{failed ? "Analysis failed" : analysis.status === "COMPLETE" ? "Analysis complete" : "Analyzing incident…"}</h3>
+        </div>
+        <code>{analysis.analysisId.slice(0, 8)}</code>
+      </div>
+      <ol className="analysis-steps" aria-label="Analysis progress">
+        {analysisSteps(analysis).map((step) => (
+          <li key={step.label} data-state={step.state}>
+            <span aria-hidden="true" />
+            <span>{step.label}</span>
+            <small>{step.state}</small>
+          </li>
+        ))}
+      </ol>
+      {failed ? (
+        <div className="analysis-failure" role="alert">
+          <dl>
+            <div><dt>Stage</dt><dd>{analysis.stage}</dd></div>
+            <div><dt>Reason</dt><dd>{analysis.reason ?? "Analysis could not be completed."}</dd></div>
+          </dl>
+          <button type="button" onClick={onRetry} disabled={loading}>Retry analysis</button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -196,7 +302,7 @@ function IncidentHeader({ analysis }: { analysis: Analysis }) {
           Build {analysis.build.id ?? "Unavailable"}
         </p>
       </div>
-      <div className="header-status" aria-label="Incident status">
+      <div className="header-status" role="status" aria-label="Incident status">
         <span className="status-dot" aria-hidden="true" />
         <span>{analysis.fault.fault_classes.map(label).join(" + ")}</span>
         <strong>{analysis.incident.status.toUpperCase()}</strong>
@@ -240,7 +346,7 @@ function Timeline({
           <p className="eyebrow">Execution history</p>
           <h2 id="timeline-title">Timeline</h2>
         </div>
-        <div className="timeline-tools" aria-label="Timeline controls">
+        <div className="timeline-tools" role="group" aria-label="Timeline controls">
           <span>{parsedLines} parsed · {ignoredLines} ignored</span>
           <button type="button" onClick={() => setViewport(zoomViewport(viewport, "in", events, event?.timestampNs))}>
             Zoom in
@@ -260,7 +366,7 @@ function Timeline({
         role="img"
         aria-label={`${events.length} runtime events from ${formatTimestamp(baseViewport.startNs)} to ${formatTimestamp(baseViewport.endNs)}`}
       />
-      <div className="event-strip" aria-label="Timeline events">
+      <div className="event-strip" role="group" aria-label="Timeline events">
         {events.map((item, index) => (
           <button
             key={item.id}
@@ -407,7 +513,7 @@ function SourceLocationPanel({ analysis, selectedFrame }: { analysis: Analysis; 
     <section className="panel source-panel" aria-labelledby="source-title">
       <PanelTitle eyebrow="Source location" title={frame?.source?.file ?? "Unavailable"} id="source-title" />
       {matchesFixture && analysis.sourceContext ? (
-        <pre className="source-code" aria-label={`Source around line ${analysis.sourceContext.focusLine}`}>
+        <pre className="source-code" role="region" tabIndex={0} aria-label={`Source around line ${analysis.sourceContext.focusLine}`}>
           {analysis.sourceContext.lines.map((line) => (
             <span key={line.number} className={line.number === analysis.sourceContext?.focusLine ? "focus-line" : ""}>
               <b>{line.number}</b><code>{line.text}</code>{line.number === analysis.sourceContext?.focusLine ? <em>PC</em> : null}

@@ -15,6 +15,16 @@ export type AnalysisArtifact = {
   blobUrl: string;
 };
 
+export type StoredAnalysis = {
+  status: "QUEUED" | "ANALYZING" | "COMPLETE" | "FAILED";
+  workflowRunId: string | null;
+  result: unknown;
+  artifact: {
+    filename: string;
+    sizeBytes: number;
+  } | null;
+};
+
 export async function createIncident(): Promise<string> {
   const id = crypto.randomUUID();
   await sql()`insert into incidents (id, status) values (${id}, 'UPLOADING')`;
@@ -58,7 +68,7 @@ export async function createQueuedAnalysis(incidentId: string, analysisId: strin
   const rows = await sql()`
     with ready_incident as (
       update incidents set status = 'QUEUED'
-      where id = ${incidentId} and status = 'READY'
+      where id = ${incidentId} and status in ('READY', 'FAILED')
       returning id
     )
     insert into analysis_runs (id, incident_id, status)
@@ -66,6 +76,29 @@ export async function createQueuedAnalysis(incidentId: string, analysisId: strin
     returning id
   `;
   if (rows.length !== 1) throw new Error("Incident is not ready for analysis");
+}
+
+export async function getAnalysis(incidentId: string, analysisId: string): Promise<StoredAnalysis | null> {
+  const rows = await sql()`
+    select runs.status, runs.workflow_run_id, runs.result,
+      artifact.filename, artifact.size_bytes
+    from analysis_runs runs
+    left join artifacts artifact
+      on artifact.incident_id = runs.incident_id and artifact.kind = 'elf'
+    where runs.id = ${analysisId} and runs.incident_id = ${incidentId}
+    limit 1
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    status: row.status as StoredAnalysis["status"],
+    workflowRunId: row.workflow_run_id == null ? null : String(row.workflow_run_id),
+    result: row.result,
+    artifact: row.filename == null ? null : {
+      filename: String(row.filename),
+      sizeBytes: Number(row.size_bytes),
+    },
+  };
 }
 
 export async function attachWorkflowRun(analysisId: string, workflowRunId: string): Promise<void> {
