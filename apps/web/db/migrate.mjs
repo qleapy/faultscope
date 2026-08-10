@@ -27,6 +27,23 @@ await sql.transaction([
     )
   `,
   sql`create index if not exists artifacts_incident_id_idx on artifacts (incident_id)`,
+  sql`
+    create table if not exists analysis_runs (
+      id uuid primary key,
+      incident_id uuid not null references incidents(id) on delete cascade,
+      workflow_run_id text,
+      status varchar(32) not null,
+      result jsonb,
+      error text,
+      created_at timestamptz not null default now(),
+      completed_at timestamptz
+    )
+  `,
+  sql`create index if not exists analysis_runs_incident_id_idx on analysis_runs (incident_id, created_at desc)`,
+  sql`
+    create unique index if not exists analysis_runs_active_incident_idx
+    on analysis_runs (incident_id) where status in ('QUEUED', 'ANALYZING')
+  `,
 ]);
 
-console.log("Artifact metadata schema is ready.");
+console.log("FaultScope metadata schema is ready.");

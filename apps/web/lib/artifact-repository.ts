@@ -10,6 +10,11 @@ type StoredBlob = {
   uploadedAt: Date;
 };
 
+export type AnalysisArtifact = {
+  kind: "elf" | "crash" | "log";
+  blobUrl: string;
+};
+
 export async function createIncident(): Promise<string> {
   const id = crypto.randomUUID();
   await sql()`insert into incidents (id, status) values (${id}, 'UPLOADING')`;
@@ -45,6 +50,83 @@ export async function recordArtifact(metadata: UploadMetadata, blob: StoredBlob)
       where id = ${metadata.incidentId}
         and exists (select 1 from artifacts where incident_id = ${metadata.incidentId} and kind = 'elf')
         and exists (select 1 from artifacts where incident_id = ${metadata.incidentId} and kind = 'crash')
+    `,
+  ]);
+}
+
+export async function createQueuedAnalysis(incidentId: string, analysisId: string): Promise<void> {
+  const rows = await sql()`
+    with ready_incident as (
+      update incidents set status = 'QUEUED'
+      where id = ${incidentId} and status = 'READY'
+      returning id
+    )
+    insert into analysis_runs (id, incident_id, status)
+    select ${analysisId}, id, 'QUEUED' from ready_incident
+    returning id
+  `;
+  if (rows.length !== 1) throw new Error("Incident is not ready for analysis");
+}
+
+export async function attachWorkflowRun(analysisId: string, workflowRunId: string): Promise<void> {
+  await sql()`
+    update analysis_runs set workflow_run_id = ${workflowRunId}
+    where id = ${analysisId}
+  `;
+}
+
+export async function beginAnalysis(analysisId: string): Promise<AnalysisArtifact[]> {
+  const database = sql();
+  await database`
+    update analysis_runs set status = 'ANALYZING'
+    where id = ${analysisId} and status in ('QUEUED', 'ANALYZING')
+  `;
+  await database`
+    update incidents set status = 'ANALYZING'
+    where id = (select incident_id from analysis_runs where id = ${analysisId})
+      and status in ('QUEUED', 'ANALYZING')
+  `;
+  const rows = await database`
+    select kind, blob_url
+    from artifacts
+    where incident_id = (select incident_id from analysis_runs where id = ${analysisId})
+      and kind in ('elf', 'crash', 'log')
+  `;
+  return rows.map((row) => ({
+    kind: row.kind as AnalysisArtifact["kind"],
+    blobUrl: String(row.blob_url),
+  }));
+}
+
+export async function completeAnalysis(analysisId: string, result: unknown): Promise<void> {
+  const database = sql();
+  await database.transaction([
+    database`
+      update analysis_runs
+      set status = 'COMPLETE', result = ${JSON.stringify(result)}::jsonb, error = null, completed_at = now()
+      where id = ${analysisId} and status in ('QUEUED', 'ANALYZING')
+    `,
+    database`
+      update incidents set status = 'COMPLETE'
+      where id = (select incident_id from analysis_runs where id = ${analysisId})
+        and status in ('QUEUED', 'ANALYZING')
+    `,
+  ]);
+}
+
+export async function failAnalysis(analysisId: string, error: string): Promise<void> {
+  const database = sql();
+  const message = error.slice(0, 2_000);
+  await database.transaction([
+    database`
+      update analysis_runs
+      set status = 'FAILED', error = ${message}, completed_at = now()
+      where id = ${analysisId} and status in ('QUEUED', 'ANALYZING')
+    `,
+    database`
+      update incidents set status = 'FAILED'
+      where id = (select incident_id from analysis_runs where id = ${analysisId})
+        and status in ('QUEUED', 'ANALYZING')
     `,
   ]);
 }

@@ -3,3 +3,4 @@
 !.env.example
 .agents
 skills-lock.json
+/.swc
