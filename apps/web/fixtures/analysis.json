@@ -1,0 +1,99 @@
+{
+  "incident": {
+    "id": "FS-0001",
+    "status": "crash",
+    "label": "HardFault during sensor update"
+  },
+  "target": {
+    "architecture": "arm.cortex-m",
+    "execution_environment": "baremetal",
+    "endian": "little",
+    "pointer_width": 32,
+    "machine": "Cortex-M4"
+  },
+  "timestamp": "2026-08-10T00:00:00Z",
+  "build": {
+    "id": "example-build-001",
+    "timestamp": null
+  },
+  "snapshot": {
+    "registers": [
+      { "id": "arm.pc", "value": "0x08004567" },
+      { "id": "arm.lr", "value": "0x08001235" },
+      { "id": "arm.sp", "value": "0x20003f80" },
+      { "id": "arm.xpsr", "value": "0x61000000" }
+    ],
+    "facts": {
+      "arch.arm.cortex_m.cfsr": "0x00008200",
+      "arch.arm.cortex_m.hfsr": "0x40000000",
+      "arch.arm.cortex_m.bfar": "0x00000004"
+    }
+  },
+  "frames": [
+    {
+      "address": { "value": 134235494, "address_space": "code", "role": "instruction_pointer" },
+      "symbol": "sensor_update",
+      "source": { "file": "src/sensor.c", "line": 184, "column": 21 },
+      "origin": "exception_frame",
+      "confidence": 1
+    },
+    {
+      "address": { "value": 134222388, "address_space": "code", "role": "return_address" },
+      "symbol": "main_loop",
+      "source": { "file": "src/main.c", "line": 91, "column": null },
+      "origin": "link_register",
+      "confidence": 0.5
+    }
+  ],
+  "fault": {
+    "fault_classes": ["bus_fault", "hard_fault"],
+    "facts": [
+      { "id": "arch.arm.cortex_m.cfsr.preciserr", "description": "Precise data bus error", "value": true },
+      { "id": "arch.arm.cortex_m.cfsr.bfarvalid", "description": "BFAR contains a valid address", "value": true },
+      { "id": "arch.arm.cortex_m.bfar.address", "description": "Valid BusFault address", "value": "0x00000004" },
+      { "id": "arch.arm.cortex_m.hfsr.forced", "description": "Escalated configurable fault", "value": true }
+    ]
+  },
+  "events": [
+    { "id": "log.line.1", "timestamp_ns": 100000, "source": "runtime.log", "kind": "log", "attributes": { "severity": "info", "message": "system boot", "text": "0.000100 [INFO] system boot" } },
+    { "id": "log.line.2", "timestamp_ns": 101200000, "source": "runtime.log", "kind": "log", "attributes": { "severity": "info", "message": "sensor task start", "text": "0.101200 [INFO] sensor task start" } },
+    { "id": "log.line.3", "timestamp_ns": 2203100000, "source": "runtime.log", "kind": "log", "attributes": { "severity": "warn", "message": "sensor timeout", "text": "2.203100 [WARN] sensor timeout" } },
+    { "id": "log.line.4", "timestamp_ns": 2204300000, "source": "runtime.log", "kind": "log", "attributes": { "severity": "error", "message": "invalid sample", "text": "2.204300 [ERROR] invalid sample" } },
+    { "id": "log.line.5", "timestamp_ns": 2205000000, "source": "runtime.log", "kind": "log", "attributes": { "severity": "fault", "message": "hardfault", "text": "2.205000 [FAULT] hardfault" } }
+  ],
+  "log_diagnostics": { "parsed_lines": 5, "ignored_lines": 0, "skipped": [] },
+  "findings": [
+    {
+      "id": "finding.possible-null-access",
+      "severity": "high",
+      "confidence": 0.97,
+      "kind": "possible_null_pointer_access",
+      "title": "Possible null pointer access",
+      "description": "A precise data bus fault targeted address 0x00000004. This is consistent with a low-address access, but does not prove pointer origin.",
+      "evidence": [
+        { "id": "evidence.precise", "description": "CFSR indicates a precise data bus error", "fact": "arch.arm.cortex_m.cfsr.preciserr" },
+        { "id": "evidence.bfar-valid", "description": "BFAR is marked valid", "fact": "arch.arm.cortex_m.cfsr.bfarvalid" },
+        { "id": "evidence.bfar", "description": "BFAR = 0x00000004", "fact": "arch.arm.cortex_m.bfar.address" }
+      ]
+    }
+  ],
+  "artifact": {
+    "name": "firmware.elf",
+    "kind": "ELF / DWARF",
+    "size_bytes": 483328,
+    "build_id": "example-build-001",
+    "symbols": "available",
+    "dwarf": "available"
+  },
+  "source_context": {
+    "file": "src/sensor.c",
+    "focus_line": 184,
+    "lines": [
+      { "number": 182, "text": "if (sensor->sample == NULL) {" },
+      { "number": 183, "text": "    return SENSOR_EMPTY;" },
+      { "number": 184, "text": "value = sensor->sample->raw;" },
+      { "number": 185, "text": "publish_sample(value);" },
+      { "number": 186, "text": "return SENSOR_OK;" }
+    ]
+  }
+}

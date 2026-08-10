@@ -1,2 +1,2 @@
 export const productName = "FaultScope";
-export const status = "Development build";
+export const tagline = "See what happened before the crash.";
