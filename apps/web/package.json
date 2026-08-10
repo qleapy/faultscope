@@ -3,10 +3,13 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "db:migrate": "node --env-file=.env.local db/migrate.mjs",
     "lint": "eslint .",
     "test": "vitest run"
   },
   "dependencies": {
+    "@neondatabase/serverless": "1.1.0",
+    "@vercel/blob": "2.6.1",
     "next": "16.2.11",
     "react": "19.2.3",
     "react-dom": "19.2.3"

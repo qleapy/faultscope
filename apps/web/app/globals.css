@@ -143,6 +143,7 @@ h3 { margin: 0; font-size: 1rem; }
 }
 .analysis-form-panel button:disabled { opacity: .55; cursor: wait; }
 .form-error { grid-column: 2; margin: 0; color: #fecdd3; font-size: .8rem; }
+.form-success { grid-column: 2; margin: 0; color: var(--positive); font-size: .8rem; }
 .timeline-panel { margin-bottom: 14px; }
 .timeline-heading { gap: 16px; }
 .timeline-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; color: var(--text-muted); font-size: .75rem; }
@@ -225,7 +226,7 @@ footer { padding: 20px 4px 0; color: var(--text-muted); font-size: .74rem; text-
 
 @media (max-width: 1024px) {
   .analysis-form-panel { grid-template-columns: 1fr; }
-  .analysis-form-panel form, .form-error { grid-column: 1; }
+  .analysis-form-panel form, .form-error, .form-success { grid-column: 1; }
   .dashboard-grid { grid-template-columns: 1fr 1fr; }
   .findings-panel { grid-row: span 2; }
 }

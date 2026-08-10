@@ -25,4 +25,10 @@ describe("incident view", () => {
       expect(html).toContain(text);
     }
   });
+
+  it("offers private artifact storage when configured", () => {
+    const html = renderToStaticMarkup(<IncidentView storageEnabled />);
+    expect(html).toContain("Store artifacts");
+    expect(html).not.toContain("Run analysis");
+  });
 });

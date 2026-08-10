@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { upload } from "@vercel/blob/client";
 
 import fixture from "../fixtures/analysis.json";
 import {
@@ -14,10 +15,17 @@ import {
   timelinePosition,
   zoomViewport,
 } from "../lib/analysis";
+import {
+  type ArtifactKind,
+  artifactContentTypes,
+  artifactPath,
+  multipartThreshold,
+  validateArtifact,
+} from "../lib/artifact-storage";
 
 const fixtureAnalysis = decodeAnalysis(fixture);
 
-export function IncidentView() {
+export function IncidentView({ storageEnabled = false }: { storageEnabled?: boolean }) {
   const [analysis, setAnalysis] = useState(fixtureAnalysis);
   const [selectedEvent, setSelectedEvent] = useState(Math.max(0, analysis.events.length - 1));
   const [selectedFrame, setSelectedFrame] = useState(0);
@@ -26,6 +34,7 @@ export function IncidentView() {
     <main className="app-shell">
       <IncidentHeader analysis={analysis} />
       <AnalysisForm
+        storageEnabled={storageEnabled}
         onComplete={(next) => {
           setAnalysis(next);
           setSelectedEvent(Math.max(0, next.events.length - 1));
@@ -56,9 +65,17 @@ export function IncidentView() {
   );
 }
 
-function AnalysisForm({ onComplete }: { onComplete: (analysis: Analysis) => void }) {
+function AnalysisForm({
+  onComplete,
+  storageEnabled,
+}: {
+  onComplete: (analysis: Analysis) => void;
+  storageEnabled: boolean;
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
 
   return (
     <section className="panel analysis-form-panel" aria-labelledby="analyze-title">
@@ -70,12 +87,50 @@ function AnalysisForm({ onComplete }: { onComplete: (analysis: Analysis) => void
       <form
         onSubmit={async (event) => {
           event.preventDefault();
+          const form = event.currentTarget;
           setLoading(true);
           setError(null);
+          setNotice(null);
+          setProgress(0);
           try {
+            if (storageEnabled) {
+              const files = artifactFiles(new FormData(form));
+              for (const item of files) {
+                const problem = validateArtifact(item.kind, item.file);
+                if (problem) throw new Error(problem);
+              }
+              const response = await fetch("/api/incidents", { method: "POST" });
+              const incident = (await response.json()) as { id?: string; error?: string };
+              if (!response.ok || !incident.id) throw new Error(incident.error ?? "Incident creation failed");
+
+              const total = files.reduce((sum, item) => sum + item.file.size, 0);
+              let completed = 0;
+              for (const item of files) {
+                const metadata = {
+                  incidentId: incident.id,
+                  kind: item.kind,
+                  filename: item.file.name,
+                  size: item.file.size,
+                };
+                await upload(artifactPath(metadata), item.file, {
+                  access: "private",
+                  handleUploadUrl: "/api/artifacts/upload",
+                  clientPayload: JSON.stringify(metadata),
+                  contentType: artifactContentTypes[item.kind],
+                  multipart: item.file.size >= multipartThreshold,
+                  onUploadProgress: ({ loaded }) =>
+                    setProgress(Math.round(((completed + loaded) / total) * 100)),
+                });
+                completed += item.file.size;
+              }
+              setProgress(100);
+              setNotice(`Incident ${incident.id} is stored and ready for analysis.`);
+              form.reset();
+              return;
+            }
             const response = await fetch("/api/analyze", {
               method: "POST",
-              body: new FormData(event.currentTarget),
+              body: new FormData(form),
             });
             const result = (await response.json()) as unknown;
             if (!response.ok) {
@@ -104,11 +159,30 @@ function AnalysisForm({ onComplete }: { onComplete: (analysis: Analysis) => void
           <span>Runtime log <small>optional</small></span>
           <input name="log" type="file" accept=".log,.txt,text/plain" />
         </label>
-        <button type="submit" disabled={loading}>{loading ? "Analyzing…" : "Run analysis"}</button>
+        <button type="submit" disabled={loading}>
+          {loading
+            ? storageEnabled ? `Uploading ${progress}%` : "Analyzing…"
+            : storageEnabled ? "Store artifacts" : "Run analysis"}
+        </button>
       </form>
       {error ? <p className="form-error" role="alert">{error} Check the files and try again.</p> : null}
+      {notice ? <p className="form-success" role="status">{notice}</p> : null}
     </section>
   );
+}
+
+function artifactFiles(form: FormData): Array<{ kind: ArtifactKind; file: File }> {
+  const required: Array<[ArtifactKind, string]> = [["elf", "elf"], ["crash", "crash"]];
+  const result = required.map(([kind, name]) => ({ kind, file: requiredFile(form, name) }));
+  const log = form.get("log");
+  if (log instanceof File && log.size > 0) result.push({ kind: "log", file: log });
+  return result;
+}
+
+function requiredFile(form: FormData, name: string): File {
+  const file = form.get(name);
+  if (!(file instanceof File) || file.size === 0) throw new Error(`${name} file is required`);
+  return file;
 }
 
 function IncidentHeader({ analysis }: { analysis: Analysis }) {
