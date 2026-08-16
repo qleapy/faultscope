@@ -4,11 +4,18 @@ Architecture- and OS-agnostic post-mortem debugging platform.
 
 > See what happened before the crash.
 
-This repository has completed Phase 11: private artifacts are processed by a durable Vercel Workflow, and the trusted Rust CLI produces independently tested, evidence-backed deterministic findings in an isolated Vercel Sandbox.
+This repository has completed Phase 13: private artifacts are processed by a durable Vercel Workflow, the trusted Rust CLI produces evidence-backed deterministic findings, and canonical FreeRTOS task/ISR events render as an execution-lane timeline.
 
 ```sh
 cargo run -p faultscope-cli -- symbolicate --elf firmware.elf 0x08004567
 cargo run -p faultscope-cli -- analyze --elf firmware.elf --crash crash.json --log runtime.log
+```
+
+Canonical environment events can share the runtime log:
+
+```text
+0.101200 [EVENT] task_switch task.sensor SensorTask scheduled
+2.180000 [EVENT] isr_enter isr.adc ADC interrupt entered
 ```
 
 ## Requirements

@@ -356,6 +356,8 @@ pub struct AnalysisResult {
     pub frames: Vec<StackFrame>,
     pub fault: FaultDecode,
     #[serde(default)]
+    pub execution_entities: Vec<ExecutionEntity>,
+    #[serde(default)]
     pub events: Vec<Event>,
     #[serde(default)]
     pub log_diagnostics: LogDiagnostics,

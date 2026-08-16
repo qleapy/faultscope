@@ -1,0 +1,13 @@
+[package]
+name = "faultscope-env-freertos"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+faultscope-core = { path = "../faultscope-core" }
+faultscope-model = { path = "../faultscope-model" }
+serde_json.workspace = true

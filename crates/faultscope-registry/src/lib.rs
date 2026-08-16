@@ -4,8 +4,9 @@ use std::fmt;
 
 use faultscope_arch_cortex_m::CortexM;
 use faultscope_artifact_elf::ElfSymbolProvider;
-use faultscope_core::{AnalysisRequest, Analyzer};
+use faultscope_core::{AnalysisRequest, Analyzer, EnvironmentProvider};
 use faultscope_env_baremetal::BareMetal;
+use faultscope_env_freertos::FreeRtos;
 use faultscope_model::{AnalysisResult, CrashInfo};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -55,14 +56,24 @@ pub fn analyze_elf(
             crash.target.architecture.0.clone(),
         ));
     }
-    if crash.target.execution_environment.0 != "baremetal" {
-        return Err(RegistryError::UnsupportedEnvironment(
-            crash.target.execution_environment.0.clone(),
-        ));
+    match crash.target.execution_environment.0.as_str() {
+        "baremetal" => analyze_with_environment(crash, elf, runtime_log, BareMetal),
+        "freertos" => analyze_with_environment(crash, elf, runtime_log, FreeRtos),
+        environment => Err(RegistryError::UnsupportedEnvironment(
+            environment.to_owned(),
+        )),
     }
+}
+
+fn analyze_with_environment<E: EnvironmentProvider>(
+    crash: CrashInfo,
+    elf: Vec<u8>,
+    runtime_log: Option<Vec<u8>>,
+    environment: E,
+) -> Result<AnalysisResult, RegistryError> {
     let symbols = ElfSymbolProvider::parse(elf)
         .map_err(|error| RegistryError::InvalidArtifact(error.to_string()))?;
-    Analyzer::new(CortexM, BareMetal, symbols)
+    Analyzer::new(CortexM, environment, symbols)
         .analyze(AnalysisRequest { crash, runtime_log })
         .map_err(|error| RegistryError::Analysis(error.to_string()))
 }
@@ -164,5 +175,20 @@ mod tests {
                 "future-crash-v2".to_owned()
             ))
         );
+    }
+
+    #[test]
+    fn reconstructs_freertos_entities_from_canonical_events() {
+        let mut crash = crash();
+        crash.target.execution_environment.0 = "freertos".to_owned();
+        let log = b"0.001000 [EVENT] task_create task.sensor Sensor task created\n\
+                    0.002000 [EVENT] task_switch task.sensor Sensor task scheduled\n\
+                    0.003000 [EVENT] isr_enter isr.adc ADC interrupt entered";
+        let result = analyze_elf(crash, elf(), Some(log.to_vec())).unwrap();
+
+        assert_eq!(result.execution_entities.len(), 2);
+        assert_eq!(result.execution_entities[0].kind.0, "isr");
+        assert_eq!(result.execution_entities[1].id.0, "task.sensor");
+        assert_eq!(result.events[1].kind.0, "task_switch");
     }
 }

@@ -26,7 +26,14 @@ export type InvestigationInput = {
     description: string;
     evidence: Array<{ id: string; description: string; reference: string }>;
   }>;
-  events: Array<{ id: string; timestamp_ns: string; severity: string; message: string }>;
+  events: Array<{
+    id: string;
+    timestamp_ns: string;
+    kind: string;
+    execution_entity: string | null;
+    severity: string;
+    message: string;
+  }>;
 };
 
 export type AIInvestigation = {
@@ -75,6 +82,8 @@ export function buildInvestigationInput(analysis: Analysis): InvestigationInput 
     events: analysis.events.slice(-limits.items).map((event) => ({
       id: event.id,
       timestamp_ns: event.timestampNs.toString(),
+      kind: event.kind,
+      execution_entity: event.executionEntity,
       severity: event.severity,
       message: event.message,
     })),
@@ -143,6 +152,8 @@ export function decodeInvestigationInput(value: unknown): InvestigationInput {
       return {
         id: string(event.id, "event id"),
         timestamp_ns: decimal(event.timestamp_ns, "event timestamp"),
+        kind: string(event.kind, "event kind"),
+        execution_entity: nullableText(event.execution_entity, "event execution entity"),
         severity: string(event.severity, "event severity"),
         message: string(event.message, "event message"),
       };

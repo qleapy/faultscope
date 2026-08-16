@@ -19,6 +19,7 @@ describe("AI investigation contract", () => {
       address: expect.any(Number),
       origin: expect.any(String),
     }));
+    expect(input.events.some((event) => event.kind === "task_switch" && event.execution_entity === "task.sensor")).toBe(true);
     expect(JSON.stringify(input)).not.toContain("sourceContext");
     expect(() => decodeInvestigationInput(input)).not.toThrow();
   });

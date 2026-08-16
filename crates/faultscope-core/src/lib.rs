@@ -11,8 +11,9 @@ use std::fmt;
 
 use faultscope_model::{
     AnalysisResult, ArchitectureId, BuildInfo, CrashInfo, Event, EventId, EventKind, EventSource,
-    ExecutionEnvironmentId, FaultDecode, Finding, LogDiagnostics, LogLineDiagnostic, LogSeverity,
-    RegisterSchema, StackFrame, SymbolizedAddress, TargetAddress, TargetSnapshot,
+    ExecutionEntity, ExecutionEnvironmentId, FaultDecode, Finding, LogDiagnostics,
+    LogLineDiagnostic, LogSeverity, RegisterSchema, StackFrame, SymbolizedAddress, TargetAddress,
+    TargetSnapshot,
 };
 use serde_json::json;
 
@@ -54,12 +55,25 @@ pub trait EnvironmentProvider: Send + Sync {
 
     fn id(&self) -> ExecutionEnvironmentId;
 
+    /// Reconstructs environment-owned execution lanes from explicit event evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns a provider-specific error when event metadata is malformed.
+    fn reconstruct_entities(&self, _events: &[Event]) -> Result<Vec<ExecutionEntity>, Self::Error> {
+        Ok(Vec::new())
+    }
+
     /// Produces findings supported by environment-specific evidence.
     ///
     /// # Errors
     ///
     /// Returns a provider-specific error when snapshot data is malformed.
-    fn analyze(&self, snapshot: &TargetSnapshot) -> Result<Vec<Finding>, Self::Error>;
+    fn analyze(
+        &self,
+        snapshot: &TargetSnapshot,
+        events: &[Event],
+    ) -> Result<Vec<Finding>, Self::Error>;
 }
 
 /// Resolves a target address without coupling analysis code to an artifact format.
@@ -177,6 +191,17 @@ where
             .architecture
             .decode_exception(&crash.snapshot)
             .map_err(|error| AnalysisError::Architecture(error.to_string()))?;
+        let log = request
+            .runtime_log
+            .as_deref()
+            .map(parse_runtime_log)
+            .transpose()
+            .map_err(|error| AnalysisError::RuntimeLog(error.to_string()))?
+            .unwrap_or_default();
+        let execution_entities = self
+            .environment
+            .reconstruct_entities(&log.events)
+            .map_err(|error| AnalysisError::Environment(error.to_string()))?;
         let register_schema = self.architecture.register_schema();
         let context = AnalysisContext {
             snapshot: &crash.snapshot,
@@ -188,16 +213,9 @@ where
         let mut findings = run_incident_rules(&context, &rules);
         findings.extend(
             self.environment
-                .analyze(&crash.snapshot)
+                .analyze(&crash.snapshot, &log.events)
                 .map_err(|error| AnalysisError::Environment(error.to_string()))?,
         );
-        let log = request
-            .runtime_log
-            .as_deref()
-            .map(parse_runtime_log)
-            .transpose()
-            .map_err(|error| AnalysisError::RuntimeLog(error.to_string()))?
-            .unwrap_or_default();
 
         Ok(AnalysisResult {
             target: crash.target,
@@ -209,6 +227,7 @@ where
             snapshot: crash.snapshot,
             frames,
             fault,
+            execution_entities,
             events: log.events,
             log_diagnostics: log.diagnostics,
             findings,
@@ -262,8 +281,12 @@ pub fn parse_runtime_log(input: &[u8]) -> Result<ParsedRuntimeLog, RuntimeLogErr
             skip_line(&mut result, line_number, "line is not valid UTF-8", bytes);
             continue;
         };
-        match parse_log_line(line) {
-            Ok((timestamp_ns, severity, message)) => {
+        match parse_runtime_line(line) {
+            Ok(ParsedLine::Log {
+                timestamp_ns,
+                severity,
+                message,
+            }) => {
                 result.events.push(Event {
                     id: EventId(format!("log.line.{line_number}")),
                     timestamp_ns,
@@ -279,21 +302,71 @@ pub fn parse_runtime_log(input: &[u8]) -> Result<ParsedRuntimeLog, RuntimeLogErr
                 });
                 result.diagnostics.parsed_lines += 1;
             }
+            Ok(ParsedLine::Event {
+                timestamp_ns,
+                kind,
+                entity,
+                message,
+            }) => {
+                result.events.push(Event {
+                    id: EventId(format!("event.line.{line_number}")),
+                    timestamp_ns,
+                    source: EventSource("runtime.log".to_owned()),
+                    kind: EventKind(kind.to_owned()),
+                    execution_entity: entity
+                        .map(|value| faultscope_model::ExecutionEntityId(value.to_owned())),
+                    address: None,
+                    attributes: json!({ "message": message, "text": line }),
+                });
+                result.diagnostics.parsed_lines += 1;
+            }
             Err(reason) => skip_line(&mut result, line_number, reason, bytes),
         }
     }
     Ok(result)
 }
 
-fn parse_log_line(line: &str) -> Result<(u64, LogSeverity, &str), &'static str> {
+enum ParsedLine<'a> {
+    Log {
+        timestamp_ns: u64,
+        severity: LogSeverity,
+        message: &'a str,
+    },
+    Event {
+        timestamp_ns: u64,
+        kind: &'a str,
+        entity: Option<&'a str>,
+        message: &'a str,
+    },
+}
+
+fn parse_runtime_line(line: &str) -> Result<ParsedLine<'_>, &'static str> {
     let (timestamp, rest) = line.split_once(' ').ok_or("missing timestamp separator")?;
     let timestamp_ns = parse_timestamp(timestamp)?;
     let rest = rest.strip_prefix('[').ok_or("missing severity")?;
-    let (severity, message) = rest.split_once("] ").ok_or("invalid severity separator")?;
+    let (token, message) = rest.split_once("] ").ok_or("invalid severity separator")?;
     if message.is_empty() {
         return Err("missing message");
     }
-    let severity = match severity {
+    if token == "EVENT" {
+        let mut fields = message.splitn(3, ' ');
+        let kind = fields.next().ok_or("missing event kind")?;
+        let entity = fields.next().ok_or("missing execution entity")?;
+        let message = fields.next().ok_or("missing event message")?;
+        if !valid_identifier(kind) {
+            return Err("invalid event kind");
+        }
+        if entity != "-" && !valid_identifier(entity) {
+            return Err("invalid execution entity");
+        }
+        return Ok(ParsedLine::Event {
+            timestamp_ns,
+            kind,
+            entity: (entity != "-").then_some(entity),
+            message,
+        });
+    }
+    let severity = match token {
         "DEBUG" => LogSeverity::Debug,
         "INFO" => LogSeverity::Info,
         "WARN" => LogSeverity::Warn,
@@ -301,7 +374,18 @@ fn parse_log_line(line: &str) -> Result<(u64, LogSeverity, &str), &'static str> 
         "FAULT" => LogSeverity::Fault,
         _ => return Err("unknown severity"),
     };
-    Ok((timestamp_ns, severity, message))
+    Ok(ParsedLine::Log {
+        timestamp_ns,
+        severity,
+        message,
+    })
+}
+
+fn valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 fn parse_timestamp(timestamp: &str) -> Result<u64, &'static str> {

@@ -5,16 +5,19 @@ import {
   decodeAnalysis,
   initialViewport,
   nextEventIndex,
+  timelineLanes,
   timelinePosition,
+  visibleEventIndexes,
   zoomViewport,
 } from "./analysis";
 
 describe("analysis fixture", () => {
   it("decodes timeline timestamps as bigint", () => {
     const analysis = decodeAnalysis(fixture);
-    expect(analysis.events).toHaveLength(5);
-    expect(analysis.events[4].timestampNs).toBe(2_205_000_000n);
+    expect(analysis.events.length).toBeGreaterThan(5);
+    expect(analysis.events.at(-1)?.timestampNs).toBe(2_205_000_000n);
     expect(analysis.findings[0].evidence).toHaveLength(3);
+    expect(analysis.executionEntities.map((entity) => entity.kind)).toContain("task");
   });
 
   it("rejects unsafe timestamp numbers", () => {
@@ -52,5 +55,13 @@ describe("analysis fixture", () => {
     expect(nextEventIndex(0, "ArrowLeft", 5)).toBe(0);
     expect(nextEventIndex(0, "ArrowRight", 5)).toBe(1);
     expect(nextEventIndex(1, "End", 5)).toBe(4);
+  });
+
+  it("builds labeled execution lanes and bounds the DOM event window", () => {
+    const analysis = decodeAnalysis(fixture);
+    const lanes = timelineLanes(analysis.events, analysis.executionEntities);
+    expect(lanes.map((lane) => lane.label)).toEqual(["System", "Idle", "SensorTask", "CommTask", "ADC ISR"]);
+    expect(visibleEventIndexes(10_000, 5_000)).toHaveLength(60);
+    expect(visibleEventIndexes(10_000, 5_000)).toContain(5_000);
   });
 });

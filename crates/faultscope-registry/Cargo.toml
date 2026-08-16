@@ -12,6 +12,7 @@ faultscope-arch-cortex-m = { path = "../faultscope-arch-cortex-m" }
 faultscope-artifact-elf = { path = "../faultscope-artifact-elf" }
 faultscope-core = { path = "../faultscope-core" }
 faultscope-env-baremetal = { path = "../faultscope-env-baremetal" }
+faultscope-env-freertos = { path = "../faultscope-env-freertos" }
 faultscope-model = { path = "../faultscope-model" }
 
 [dev-dependencies]

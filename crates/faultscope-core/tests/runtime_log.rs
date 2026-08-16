@@ -38,3 +38,23 @@ fn rejects_timestamp_overflow_as_one_bad_line() {
     assert_eq!(result.diagnostics.ignored_lines, 1);
     assert_eq!(result.diagnostics.skipped[0].reason, "timestamp overflow");
 }
+
+#[test]
+fn parses_generic_environment_events_without_core_specific_kinds() {
+    let input = b"0.100000 [EVENT] task_switch task.sensor Sensor task scheduled\n\
+                  0.200000 [EVENT] vendor.future_event - Vendor event";
+    let result = parse_runtime_log(input).unwrap();
+
+    assert_eq!(result.events.len(), 2);
+    assert_eq!(result.events[0].kind.0, "task_switch");
+    assert_eq!(
+        result.events[0].execution_entity.as_ref().unwrap().0,
+        "task.sensor"
+    );
+    assert_eq!(
+        result.events[0].attributes["message"],
+        json!("Sensor task scheduled")
+    );
+    assert_eq!(result.events[1].kind.0, "vendor.future_event");
+    assert!(result.events[1].execution_entity.is_none());
+}

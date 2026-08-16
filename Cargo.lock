@@ -109,6 +109,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "faultscope-env-freertos"
+version = "0.1.0"
+dependencies = [
+ "faultscope-core",
+ "faultscope-model",
+ "serde_json",
+]
+
+[[package]]
 name = "faultscope-model"
 version = "0.1.0"
 dependencies = [
@@ -124,6 +133,7 @@ dependencies = [
  "faultscope-artifact-elf",
  "faultscope-core",
  "faultscope-env-baremetal",
+ "faultscope-env-freertos",
  "faultscope-model",
  "object",
  "serde_json",

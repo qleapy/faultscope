@@ -1,10 +1,15 @@
 export type TimelineEvent = {
   id: string;
   timestampNs: bigint;
+  kind: string;
+  executionEntity: string | null;
   severity: string;
   message: string;
   text: string;
 };
+
+export type ExecutionEntity = { id: string; kind: string; label: string };
+export type TimelineLane = ExecutionEntity | { id: "system"; kind: "system"; label: "System" };
 
 export type TimelineViewport = { startNs: bigint; endNs: bigint };
 
@@ -28,6 +33,7 @@ export type Analysis = {
     fault_classes: string[];
     facts: Array<{ id: string; description: string; value: unknown }>;
   };
+  executionEntities: ExecutionEntity[];
   events: TimelineEvent[];
   logDiagnostics: { parsedLines: number; ignoredLines: number };
   findings: Array<{
@@ -70,6 +76,16 @@ export function decodeAnalysis(value: unknown): Analysis {
   const build = record(root.build, "build") as Analysis["build"];
   const frames = list(root.frames, "frames") as Analysis["frames"];
   const artifact = optionalRecord(root.artifact);
+  const executionEntities = root.execution_entities == null
+    ? []
+    : list(root.execution_entities, "execution_entities").map((item, index) => {
+      const entity = record(item, `execution entity ${index + 1}`);
+      return {
+        id: text(entity.id, "execution entity id"),
+        kind: text(entity.kind, "execution entity kind"),
+        label: text(entity.label, "execution entity label"),
+      };
+    });
 
   return {
     incident: {
@@ -91,15 +107,20 @@ export function decodeAnalysis(value: unknown): Analysis {
       ),
       facts: list(fault.facts, "fault facts") as Analysis["fault"]["facts"],
     },
+    executionEntities,
     events: list(root.events, "events").map((item, index) => {
       const event = record(item, `event ${index + 1}`);
       const attributes = record(event.attributes, `event ${index + 1} attributes`);
+      const kind = text(event.kind, "event kind");
+      const message = text(attributes.message, "event message");
       return {
         id: text(event.id, "event.id"),
         timestampNs: nanoseconds(event.timestamp_ns),
-        severity: text(attributes.severity, "event severity"),
-        message: text(attributes.message, "event message"),
-        text: text(attributes.text, "event text"),
+        kind,
+        executionEntity: optionalText(event.execution_entity, "event execution entity"),
+        severity: optionalText(attributes.severity, "event severity") ?? eventSeverity(kind),
+        message,
+        text: optionalText(attributes.text, "event text") ?? message,
       };
     }),
     logDiagnostics: {
@@ -125,6 +146,30 @@ export function decodeAnalysis(value: unknown): Analysis {
         }
       : null,
   };
+}
+
+export function timelineLanes(
+  events: TimelineEvent[],
+  entities: ExecutionEntity[],
+): TimelineLane[] {
+  const lanes: TimelineLane[] = [...entities];
+  const known = new Set(entities.map((entity) => entity.id));
+  for (const id of events.map((event) => event.executionEntity).filter((id): id is string => id !== null)) {
+    if (!known.has(id)) {
+      lanes.push({ id, kind: "context", label: id });
+      known.add(id);
+    }
+  }
+  if (lanes.length === 0 || events.some((event) => event.executionEntity === null)) {
+    lanes.unshift({ id: "system", kind: "system", label: "System" });
+  }
+  return lanes;
+}
+
+export function visibleEventIndexes(length: number, selected: number, maximum = 60): number[] {
+  const count = Math.min(length, maximum);
+  const start = Math.max(0, Math.min(length - count, selected - Math.floor(count / 2)));
+  return Array.from({ length: count }, (_, index) => start + index);
 }
 
 export function initialViewport(events: TimelineEvent[]): TimelineViewport {
@@ -202,6 +247,16 @@ function list(value: unknown, name: string): unknown[] {
 function text(value: unknown, name: string): string {
   if (typeof value !== "string") throw new Error(`${name} must be a string`);
   return value;
+}
+
+function optionalText(value: unknown, name: string): string | null {
+  return value == null ? null : text(value, name);
+}
+
+function eventSeverity(kind: string): string {
+  if (kind.includes("fault") || kind === "task_delete") return "fault";
+  if (kind === "mutex_wait" || kind.includes("watchdog")) return "warn";
+  return "info";
 }
 
 function integer(value: unknown, name: string): number {

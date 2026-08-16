@@ -14,7 +14,11 @@ impl EnvironmentProvider for BareMetal {
         ExecutionEnvironmentId("baremetal".to_owned())
     }
 
-    fn analyze(&self, _snapshot: &TargetSnapshot) -> Result<Vec<Finding>, Self::Error> {
+    fn analyze(
+        &self,
+        _snapshot: &TargetSnapshot,
+        _events: &[faultscope_model::Event],
+    ) -> Result<Vec<Finding>, Self::Error> {
         Ok(Vec::new())
     }
 }

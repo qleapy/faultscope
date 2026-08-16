@@ -10,6 +10,7 @@ describe("incident view", () => {
     const html = renderToStaticMarkup(<IncidentView />);
     for (const text of [
       "Timeline",
+      "FreeRTOS",
       "Findings",
       "Possible null pointer access",
       "Confidence",

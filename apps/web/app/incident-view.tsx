@@ -6,13 +6,17 @@ import { upload } from "@vercel/blob/client";
 import fixture from "../fixtures/analysis.json";
 import {
   type Analysis,
+  type ExecutionEntity,
+  type TimelineLane,
   type TimelineEvent,
   type TimelineViewport,
   decodeAnalysis,
   formatTimestamp,
   initialViewport,
   nextEventIndex,
+  timelineLanes,
   timelinePosition,
+  visibleEventIndexes,
   zoomViewport,
 } from "../lib/analysis";
 import {
@@ -54,6 +58,7 @@ export function IncidentView({ storageEnabled = false }: { storageEnabled?: bool
       />
       <Timeline
         events={analysis.events}
+        entities={analysis.executionEntities}
         selected={selectedEvent}
         onSelect={setSelectedEvent}
         parsedLines={analysis.logDiagnostics.parsedLines}
@@ -374,7 +379,7 @@ function IncidentHeader({ analysis }: { analysis: Analysis }) {
         <p className="eyebrow">FaultScope / Incident {analysis.incident.id}</p>
         <h1>{analysis.incident.label}</h1>
         <p className="header-meta">
-          {String(analysis.target.machine ?? analysis.target.architecture)} · {analysis.timestamp} ·
+          {String(analysis.target.machine ?? analysis.target.architecture)} · {label(String(analysis.target.execution_environment))} · {analysis.timestamp} ·
           Build {analysis.build.id ?? "Unavailable"}
         </p>
       </div>
@@ -389,12 +394,14 @@ function IncidentHeader({ analysis }: { analysis: Analysis }) {
 
 function Timeline({
   events,
+  entities,
   selected,
   onSelect,
   parsedLines,
   ignoredLines,
 }: {
   events: TimelineEvent[];
+  entities: ExecutionEntity[];
   selected: number;
   onSelect: (index: number) => void;
   parsedLines: number;
@@ -403,16 +410,19 @@ function Timeline({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const baseViewport = initialViewport(events);
   const [viewport, setViewport] = useState(baseViewport);
+  const lanes = timelineLanes(events, entities);
+  const canvasHeight = Math.max(156, 52 + lanes.length * 36);
+  const visibleIndexes = visibleEventIndexes(events.length, selected);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const draw = () => drawTimeline(canvas, events, viewport, selected);
+    const draw = () => drawTimeline(canvas, events, lanes, viewport, selected, canvasHeight);
     draw();
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [events, selected, viewport]);
+  }, [canvasHeight, events, lanes, selected, viewport]);
 
   const event = events[selected];
   return (
@@ -423,7 +433,8 @@ function Timeline({
           <h2 id="timeline-title">Timeline</h2>
         </div>
         <div className="timeline-tools" role="group" aria-label="Timeline controls">
-          <span>{parsedLines} parsed · {ignoredLines} ignored</span>
+          <span>{parsedLines} parsed · {ignoredLines} ignored · {lanes.length} lanes</span>
+          <span className="timeline-legend">Bar = running context · Marker = event</span>
           <button type="button" onClick={() => setViewport(zoomViewport(viewport, "in", events, event?.timestampNs))}>
             Zoom in
           </button>
@@ -438,12 +449,15 @@ function Timeline({
       <canvas
         ref={canvasRef}
         className="timeline-canvas"
-        height={156}
+        height={canvasHeight}
+        style={{ height: canvasHeight }}
         role="img"
-        aria-label={`${events.length} runtime events from ${formatTimestamp(baseViewport.startNs)} to ${formatTimestamp(baseViewport.endNs)}`}
+        aria-label={`${events.length} runtime events across ${lanes.length} execution lanes from ${formatTimestamp(baseViewport.startNs)} to ${formatTimestamp(baseViewport.endNs)}`}
       />
       <div className="event-strip" role="group" aria-label="Timeline events">
-        {events.map((item, index) => (
+        {visibleIndexes.map((index) => {
+          const item = events[index];
+          return (
           <button
             key={item.id}
             type="button"
@@ -456,18 +470,21 @@ function Timeline({
               if (next !== index) {
                 event.preventDefault();
                 onSelect(next);
-                document.getElementById(`timeline-event-${next}`)?.focus();
+                requestAnimationFrame(() => document.getElementById(`timeline-event-${next}`)?.focus());
               }
             }}
           >
             <span className={`severity-mark ${item.severity}`} aria-hidden="true" />
             <span>{formatTimestamp(item.timestampNs)}</span>
             <strong>{item.message}</strong>
+            <small>{label(item.kind)} · {laneLabel(item, lanes)}</small>
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="selected-event" aria-live="polite">
         <span className={`severity-pill ${event?.severity ?? "info"}`}>{event?.severity ?? "unknown"}</span>
+        <span className="event-kind-pill">{event ? label(event.kind) : "Unknown event"}</span>
         <code>{event?.text ?? "No event selected"}</code>
       </div>
     </section>
@@ -642,11 +659,12 @@ function PanelTitle({ eyebrow, title, id }: { eyebrow: string; title: string; id
 function drawTimeline(
   canvas: HTMLCanvasElement,
   events: TimelineEvent[],
+  lanes: TimelineLane[],
   viewport: TimelineViewport,
   selected: number,
+  height: number,
 ) {
   const width = Math.max(320, canvas.clientWidth);
-  const height = 156;
   const ratio = window.devicePixelRatio || 1;
   canvas.width = width * ratio;
   canvas.height = height * ratio;
@@ -655,18 +673,63 @@ function drawTimeline(
   const tokens = getComputedStyle(document.documentElement);
   context.scale(ratio, ratio);
   context.clearRect(0, 0, width, height);
-  context.strokeStyle = tokens.getPropertyValue("--border");
-  context.lineWidth = 1;
-  context.beginPath();
-  context.moveTo(42, 78.5);
-  context.lineTo(width - 24, 78.5);
-  context.stroke();
-  context.fillStyle = tokens.getPropertyValue("--text-muted");
-  context.font = "12px ui-monospace, monospace";
-  context.fillText("LOG", 0, 82);
+  const plotStart = Math.min(112, Math.max(78, width * 0.28));
+  const plotWidth = width - plotStart - 18;
+  context.font = "11px ui-monospace, monospace";
+  lanes.forEach((lane, index) => {
+    const y = 28 + index * 36;
+    context.fillStyle = tokens.getPropertyValue("--text-muted");
+    context.fillText(lane.label.slice(0, 15), 0, y + 4);
+    context.strokeStyle = tokens.getPropertyValue("--border");
+    context.lineWidth = lane.kind === "isr" ? 1.5 : 1;
+    context.setLineDash(lane.kind === "isr" ? [4, 4] : []);
+    context.beginPath();
+    context.moveTo(plotStart, y + 0.5);
+    context.lineTo(width - 18, y + 0.5);
+    context.stroke();
+  });
+  context.setLineDash([]);
+  const taskEnds = new Map<number, bigint>();
+  let nextSwitch = viewport.endNs;
+  const isrEnds = new Map<number, bigint>();
+  const nextIsrExit = new Map<string, bigint>();
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.kind === "task_switch") {
+      taskEnds.set(index, nextSwitch);
+      nextSwitch = event.timestampNs;
+    }
+    if (event.executionEntity && event.kind === "isr_exit") {
+      nextIsrExit.set(event.executionEntity, event.timestampNs);
+    }
+    if (event.executionEntity && event.kind === "isr_enter") {
+      const exit = nextIsrExit.get(event.executionEntity);
+      if (exit !== undefined) isrEnds.set(index, exit);
+    }
+  }
   events.forEach((event, index) => {
-    const x = 42 + timelinePosition(event.timestampNs, viewport, width - 66);
+    if (event.timestampNs < viewport.startNs || event.timestampNs > viewport.endNs) return;
+    const laneIndex = lanes.findIndex((lane) => lane.id === (event.executionEntity ?? "system"));
+    if (laneIndex < 0) return;
+    const y = 28 + laneIndex * 36;
+    const x = plotStart + timelinePosition(event.timestampNs, viewport, plotWidth);
     const fault = event.severity === "fault";
+    if (event.kind === "task_switch") {
+      const end = taskEnds.get(index) ?? viewport.endNs;
+      const endX = plotStart + timelinePosition(end, viewport, plotWidth);
+      context.fillStyle = tokens.getPropertyValue("--accent");
+      context.globalAlpha = 0.28;
+      context.fillRect(x, y - 7, Math.max(3, endX - x), 14);
+      context.globalAlpha = 1;
+    }
+    if (event.kind === "isr_enter") {
+      const exit = isrEnds.get(index);
+      if (exit !== undefined) {
+        const endX = plotStart + timelinePosition(exit, viewport, plotWidth);
+        context.fillStyle = tokens.getPropertyValue("--warning");
+        context.fillRect(x, y - 6, Math.max(3, endX - x), 12);
+      }
+    }
     context.fillStyle = fault
       ? tokens.getPropertyValue("--danger")
       : index === selected
@@ -674,13 +737,13 @@ function drawTimeline(
         : tokens.getPropertyValue("--positive");
     context.beginPath();
     if (fault) {
-      context.moveTo(x, 67);
-      context.lineTo(x + 10, 78);
-      context.lineTo(x, 89);
-      context.lineTo(x - 10, 78);
+      context.moveTo(x, y - 9);
+      context.lineTo(x + 8, y);
+      context.lineTo(x, y + 9);
+      context.lineTo(x - 8, y);
       context.closePath();
     } else {
-      context.arc(x, 78, index === selected ? 7 : 5, 0, Math.PI * 2);
+      context.arc(x, y, index === selected ? 6 : 4, 0, Math.PI * 2);
     }
     context.fill();
     if (index === selected) {
@@ -688,11 +751,19 @@ function drawTimeline(
       context.lineWidth = 2;
       context.stroke();
       context.fillStyle = tokens.getPropertyValue("--text");
-      context.fillText(formatTimestamp(event.timestampNs), Math.max(42, Math.min(width - 120, x - 38)), 118);
+      context.fillText(formatTimestamp(event.timestampNs), Math.max(plotStart, Math.min(width - 96, x - 30)), height - 8);
     }
   });
 }
 
+function laneLabel(event: TimelineEvent, lanes: TimelineLane[]): string {
+  return lanes.find((lane) => lane.id === (event.executionEntity ?? "system"))?.label ?? "Unknown";
+}
+
 function label(value: string): string {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\bIsr\b/g, "ISR")
+    .replace(/\bFreertos\b/g, "FreeRTOS");
 }
