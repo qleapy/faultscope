@@ -28,6 +28,11 @@ import {
   queueAnalysis,
   type ProductionAnalysis,
 } from "../lib/production-analysis";
+import {
+  type AIInvestigation,
+  buildInvestigationInput,
+  decodeAIInvestigation,
+} from "../lib/investigation";
 
 const fixtureAnalysis = decodeAnalysis(fixture);
 
@@ -59,6 +64,10 @@ export function IncidentView({ storageEnabled = false }: { storageEnabled?: bool
         <RegistersPanel analysis={analysis} />
         <FaultPanel analysis={analysis} />
       </section>
+      <AIInvestigatorPanel
+        key={`${analysis.incident.id}:${analysis.timestamp}`}
+        analysis={analysis}
+      />
       <StackFramePanel analysis={analysis} selected={selectedFrame} onSelect={setSelectedFrame} />
       <section className="bottom-grid">
         <SourceLocationPanel analysis={analysis} selectedFrame={selectedFrame} />
@@ -68,6 +77,79 @@ export function IncidentView({ storageEnabled = false }: { storageEnabled?: bool
         Deterministic analysis only · Symbols, addresses, and fault facts come from parsed artifacts.
       </footer>
     </main>
+  );
+}
+
+export function AIInvestigatorPanel({ analysis }: { analysis: Analysis }) {
+  const [result, setResult] = useState<AIInvestigation | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function investigate() {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/investigate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildInvestigationInput(analysis)),
+      });
+      const body = await response.json() as unknown;
+      if (!response.ok) {
+        const message = typeof body === "object" && body !== null && "error" in body
+          ? String(body.error)
+          : "AI investigation failed. Try again.";
+        throw new Error(message);
+      }
+      setResult(decodeAIInvestigation(body));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "AI investigation failed. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="panel ai-panel" aria-labelledby="ai-investigator-title" aria-busy={loading}>
+      <div className="ai-heading">
+        <div>
+          <p className="eyebrow">Optional AI explanation</p>
+          <h2 id="ai-investigator-title">AI Investigator</h2>
+        </div>
+        <span className="interpretation-badge">Interpretation only</span>
+      </div>
+      <p className="ai-disclaimer">
+        Generated explanation of the deterministic evidence above. It cannot change facts, symbols, fault classes, or timeline order.
+      </p>
+      {result ? (
+        <div className="ai-result" aria-live="polite">
+          <section>
+            <h3>Summary</h3>
+            <p>{result.summary}</p>
+          </section>
+          <section>
+            <h3>Likely chain</h3>
+            {result.likely_chain.length ? <ol>{result.likely_chain.map((item) => <li key={item}>{item}</li>)}</ol> : <p>Insufficient evidence to infer a chain.</p>}
+          </section>
+          <section>
+            <h3>Recommended checks</h3>
+            {result.recommended_checks.length ? <ul>{result.recommended_checks.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No additional checks suggested.</p>}
+          </section>
+          <section>
+            <h3>Evidence IDs</h3>
+            <div className="ai-evidence">
+              {result.evidence_ids.length ? result.evidence_ids.map((id) => <code key={id}>{id}</code>) : <span>No valid evidence IDs cited.</span>}
+            </div>
+          </section>
+        </div>
+      ) : (
+        <p className="ai-empty">Request a concise event-chain explanation and next checks only when you need them.</p>
+      )}
+      {error ? <p className="ai-error" role="alert">{error}</p> : null}
+      <button className="ai-action" type="button" onClick={investigate} disabled={loading}>
+        {loading ? "Investigating…" : result ? "Run again" : "Explain deterministic findings"}
+      </button>
+    </section>
   );
 }
 

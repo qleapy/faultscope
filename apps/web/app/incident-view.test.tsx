@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { AnalysisProgress, IncidentView, evidenceReference } from "./incident-view";
+import { AIInvestigatorPanel, AnalysisProgress, IncidentView, evidenceReference } from "./incident-view";
+import fixture from "../fixtures/analysis.json";
+import { decodeAnalysis } from "../lib/analysis";
 
 describe("incident view", () => {
   it("renders facts, interpretation, confidence, evidence, frames, and unavailable state", () => {
@@ -30,6 +32,14 @@ describe("incident view", () => {
     const html = renderToStaticMarkup(<IncidentView storageEnabled />);
     expect(html).toContain("Analyze artifacts");
     expect(html).not.toContain("Run analysis");
+  });
+
+  it("labels AI output as optional interpretation before any model call", () => {
+    const html = renderToStaticMarkup(<AIInvestigatorPanel analysis={decodeAnalysis(fixture)} />);
+    expect(html).toContain("Optional AI explanation");
+    expect(html).toContain("Interpretation only");
+    expect(html).toContain("Explain deterministic findings");
+    expect(html).toContain("cannot change facts");
   });
 
   it("shows a safe failure reason and retry action", () => {
